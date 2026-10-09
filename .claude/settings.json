@@ -1,0 +1,46 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(just check)",
+      "Bash(just fmt)",
+      "Bash(just build *)",
+      "Bash(nix flake check *)",
+      "Bash(nix flake show *)",
+      "Bash(nix flake metadata *)",
+      "Bash(nix eval *)",
+      "Bash(nix build *)",
+      "Bash(nix fmt *)",
+      "Bash(nix search *)",
+      "Bash(nvd *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ],
+    "deny": [
+      "Bash(sudo *)",
+      "Bash(nixos-rebuild *)",
+      "Bash(nixos-install *)",
+      "Bash(nixos-enter *)",
+      "Bash(disko *)",
+      "Bash(btrfs *)",
+      "Bash(cryptsetup *)",
+      "Bash(mkfs*)",
+      "Bash(dd *)",
+      "Bash(nix-collect-garbage *)",
+      "Bash(nix store gc *)",
+      "Bash(nix-env *)",
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean *)",
+      "Bash(rm -rf *)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(//**/keys.txt)",
+      "Read(~/.config/sops/age/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.gnupg/**)",
+      "Edit(./secrets/**)",
+      "Edit(./.env)",
+      "Edit(./.env.*)"
+    ]
+  }
+}

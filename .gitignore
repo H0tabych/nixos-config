@@ -1,0 +1,17 @@
+# --- добавить в .gitignore (STRUCTURE.md, раздел 2) ---
+result
+result-*
+.direnv/
+.env
+.env.*
+
+# личные настройки ассистента
+CLAUDE.local.md
+.claude/settings.local.json
+
+# приватные материалы и ключи (хранятся вне репозитория, это страховка)
+/docs/private/
+keys.txt
+*.age
+*.key
+
