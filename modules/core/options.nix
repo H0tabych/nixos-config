@@ -20,13 +20,10 @@
               default = [ ];
               description = "Список возможностей пользователя (USER-4).";
             };
-            dotfiles.mode = lib.mkOption {
-              type = lib.types.enum [
-                "store"
-                "live"
-              ];
-              default = "store";
-              description = "Режим подключения dotfiles (DOT-4).";
+            dotfiles.source = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Путь к рабочей копии dotfiles пользователя; null — симлинки не создаются (DOT-4).";
             };
           };
         }

@@ -121,7 +121,7 @@ nixos-config/                        # публичный репозиторий
 ├── .sops.yaml                       # только публичные recipients
 ├── templates/                       # шаблоны проектов (по одному на поддерживаемый язык/стек)
 ├── docs/                            # README, runbook, adr/
-├── justfile                         # bootstrap, rebuild, dotfiles-live, add-host, hibernate-offset
+├── justfile                         # bootstrap, rebuild, dotfiles-clone, add-host, hibernate-offset
 └── .github/workflows/               # CI
 ```
 
@@ -158,7 +158,7 @@ dotfiles/
 
 | ID | Правило |
 |---|---|
-| USER-1 | Источник истины — `my.users.<имя>` (внешний scope; файл `modules/users/<имя>.nix`): `admin`, `capabilities`, источник и режим dotfiles. Приватные факты пользователя — только в sops (SEC-2). |
+| USER-1 | Источник истины — `my.users.<имя>` (внешний scope; файл `modules/users/<имя>.nix`): `admin`, `capabilities`, источник dotfiles. Приватные факты пользователя — только в sops (SEC-2). |
 | USER-2 | Хост выбирает подмножество: `my.host.users`. Один пользователь может быть на нескольких хостах, на хосте — несколько пользователей. |
 | USER-3 | Фича `users` создаёт системные учётные записи (администратор → группа администрирования) и подключает HM-модули: для каждой capability `c` — модуль `flake.modules.homeManager.<c>`, если он существует. |
 | USER-4 | **Capability — архитектурный словарь:** `desktop`, `development`, `office`, `media`, `gaming`, `ml`, `containers`, … Новое слово — запись в каталог (раздел 6). Одно слово может иметь nixos-пресет (для хоста) и homeManager-пресет (для пользователя) с одинаковым именем. |
@@ -172,7 +172,7 @@ dotfiles/
 |---|---|---|
 | `my.users.<имя>.admin` | внешний | права администратора |
 | `my.users.<имя>.capabilities` | внешний | список возможностей (USER-4) |
-| `my.users.<имя>.dotfiles.{mode,…}` | внешний | режим (`store`/`live`) и параметры источника dotfiles |
+| `my.users.<имя>.dotfiles.source` | внешний | путь к рабочей копии dotfiles пользователя (`null` — симлинки не создаются, DOT-4) |
 | `my.theme.palette` | внешний | палитра (читается из dotfiles, DOT-9) |
 | `my.host.name`, `my.host.class` | nixos | имя и класс хоста (`laptop`, `workstation`, `server`, `vm`) |
 | `my.host.stateVersion` | nixos | версия состояния, **параметр хоста** (раздел 7) |
@@ -199,7 +199,7 @@ dotfiles/
     sops-nix     = { url = "github:Mic92/sops-nix";      inputs.nixpkgs.follows = "nixpkgs"; };
     disko        = { url = "github:nix-community/disko"; inputs.nixpkgs.follows = "nixpkgs"; };
     treefmt-nix  = { url = "github:numtide/treefmt-nix"; inputs.nixpkgs.follows = "nixpkgs"; };
-    dotfiles     = { url = "<репозиторий dotfiles>"; flake = false; };   # store-режим; на каждого пользователя со своим источником — отдельный input
+    dotfiles     = { url = "<репозиторий dotfiles>"; flake = false; };   # читает theme/palette.toml (DOT-9); симлинки ~/.config идут не через этот input, а на путь из dotfiles.source (DOT-4)
   };
   outputs = inputs:
     inputs.flake-parts.lib.mkFlake { inherit inputs; } (inputs.import-tree ./modules);
@@ -216,7 +216,7 @@ dotfiles/
       options = {
         admin        = lib.mkOption { type = lib.types.bool;                default = false; };
         capabilities = lib.mkOption { type = lib.types.listOf lib.types.str; default = [ ]; };
-        dotfiles.mode = lib.mkOption { type = lib.types.enum [ "store" "live" ]; default = "store"; };
+        dotfiles.source = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
       };
     });
   };
@@ -230,7 +230,7 @@ dotfiles/
   my.users.alice = {
     admin = true;
     capabilities = [ "desktop" "development" "office" ];
-    dotfiles.mode = "live";
+    dotfiles.source = "/home/alice/dotfiles";
   };
 }
 ```
@@ -376,19 +376,19 @@ let n = config.flake.modules.nixos; in {
 | DOT-1 | Репозиторий dotfiles — отдельный, публичный, самодостаточный: без секретов, без путей `/nix/store`, без констант хоста. |
 | DOT-2 | **Реестр портативных приложений** ведётся в `dotfiles/REGISTRY.md` (с версионными заметками). Добавление приложения — запись в реестр + ADR-lite. Приложение вне реестра конфигурируется Nix. |
 | DOT-3 | Для приложений реестра Nix **не использует**: генераторы конфигов (`programs.<app>.settings`, `extraConfig`, `theme`, `services.<app>` с конфигом), `xdg.configFile.<app>`, `home.file` на файлы приложения. **Разрешено:** пакет, systemd-юнит демона, PAM/сессия, файлы машинного слоя. |
-| DOT-4 | Для каждого пользователя `~/.config/<app>` — симлинк: режим `live` → на рабочую копию (`mkOutOfStoreSymlink`); режим `store` → на копию из flake-input (воспроизводимо, read-only). Первая установка, CI, `vm` — `store`; рабочая машина — `live` после `just dotfiles-live` (клон + переключение). Источник — параметр пользователя. |
+| DOT-4 | Для каждого пользователя `~/.config/<app>` — симлинк (`mkOutOfStoreSymlink`) на рабочую копию по пути `my.users.<имя>.dotfiles.source`. Правка видна без пересборки. Пока источник не указан или по пути ничего нет — симлинки этого приложения не создаются (fail-soft, как DOT-5), а не падает активация. Один механизм, без отдельного «read-only» режима. |
 | DOT-5 | **Машинный слой** — единственное, что Nix кладёт рядом: `~/.config/machine.d/*` (реальный каталог, не симлинк на репозиторий; не коммитится в dotfiles). Портативные конфиги подключают его штатными include и MUST работать, если файла нет или он пуст. Если у приложения нет include — не-секретные и не-машинные значения лежат прямо в dotfiles. |
 | DOT-6 | В машинный слой попадает: пути к фреймворкам и плагинам, устройства/мониторы/раскладка, имя батареи, префикс запуска приложений (зависит от менеджера сессий), цвета из палитры, переменные окружения шеллов. |
 | DOT-7 | Переменные окружения **графической сессии** задаёт один механизм менеджера сессий, генерируемый Nix; без дублей в конфиге композитора и в HM `sessionVariables`. |
 | DOT-8 | `install.sh` (для не-Nix систем): создаёт симлинки и заглушки машинного слоя; `--check-deps` печатает список пакетов для менеджеров пакетов других дистрибутивов. |
-| DOT-9 | Палитра — только `theme/palette.toml`; генератор создаёт `colors.*` для каждого приложения (результат коммитится); Nix читает тот же TOML для своих потребителей. В `live` режиме Nix-потребители обновляются через `nix flake update <dotfiles-input>`. |
+| DOT-9 | Палитра — только `theme/palette.toml`; генератор создаёт `colors.*` для каждого приложения (результат коммитится); Nix читает тот же TOML для своих потребителей. Новое значение палитры доходит до Nix-потребителей через `nix flake update <dotfiles-input>`. |
 | DOT-10 | Конфиги ПО, чей синтаксис меняется между версиями, переносимы только в пределах совместимых версий. Целевая версия — в `REGISTRY.md`; ломающее изменение — тег репозитория. |
 | DOT-11 | Приложения с собственным менеджером плагинов: lock-файл плагинов лежит в dotfiles (воспроизводимость). |
 | DOT-12 | Приложения, находящие конфиг через переменную окружения: переменную задаёт система (не конфиг); на других системах — `install.sh`. |
 | DOT-13 | Значения по умолчанию в портативных конфигах пишутся как «значение окружения, иначе умолчание»: значение, заданное системой, приоритетнее. |
 | DOT-14 | Проверки: CI dotfiles (линтеры и валидаторы форматов); CI nixos-config (нет генераторов для приложений реестра, нет `/nix/store` в dotfiles). |
 
-**Цена (принята осознанно):** в `live` откат поколения NixOS не откатывает конфиги — откат через git dotfiles; версии ПО на разных дистрибутивах различаются — фиксируются в `REGISTRY.md`.
+**Цена (принята осознанно):** откат поколения NixOS не откатывает конфиги приложений — откат через git dotfiles; версии ПО на разных дистрибутивах различаются — фиксируются в `REGISTRY.md`.
 Не переносится по природе (остаётся в Nix): тема менеджера входа, GTK/Qt/dconf, systemd-юниты, sops, железо.
 
 ---
@@ -607,7 +607,7 @@ let n = config.flake.modules.nixos; in {
 Форматирование, `nix flake check`, сканер секретов; нет секретов и приватных фактов; каталог и ADR обновлены; Conventional Commits.
 
 ### 18.9 Установка на чистую машину
-Образ установщика → разметка → ключ хоста → установка из flake → первый вход в режиме `store` → `just dotfiles-live` → приёмка (раздел 20).
+Образ установщика → разметка → ключ хоста → установка из flake → первый вход (приложения реестра без конфигов) → `just dotfiles-clone` → приёмка (раздел 20).
 
 ---
 
@@ -677,7 +677,7 @@ let n = config.flake.modules.nixos; in {
 |---|---|---|
 | ADR-1 | Каркас: flake-parts + автоимпорт («dendritic-lite»), фича = файл | Нет расщепления NixOS/HM и `specialArgs`; хост — композиция; тело фичи остаётся обычным модулем, откат дёшев |
 | ADR-2 | Home Manager как NixOS-модуль | Один rebuild, атомарность |
-| ADR-3 | Dotfiles: отдельный репозиторий, режимы `live`/`store`, машинный слой | Правки без пересборки, переносимость на другие дистрибутивы |
+| ADR-3 | Dotfiles: отдельный репозиторий, один механизм симлинка (`mkOutOfStoreSymlink`), машинный слой | Правки без пересборки, переносимость на другие дистрибутивы |
 | ADR-4 | Секреты: sops-nix (age; гибридный PQ при поддержке) в публичном репозитории | Публичный репозиторий; шифруются только ротируемые секреты |
 | ADR-5 | Хранилище: декларативная разметка + шифрование + ФС со снимками + swap-файл | Шифрование, воспроизводимость, гибернация |
 | ADR-6 | Эфемерный корень — опционально | Без реального отката корня бессмыслен |

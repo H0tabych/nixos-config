@@ -31,9 +31,9 @@ update input="":
     nixos-rebuild build --flake .#$(hostname)
     nvd diff /run/current-system result
 
-# TODO(DOT-4, Этап 4): клон и переключение режима live ещё не специфицированы
-dotfiles-live:
-    @echo "dotfiles-live: см. docs/architecture/ARCHITECTURE.md DOT-4 — ещё не реализовано"
+# TODO(DOT-4, Этап 4): первое клонирование dotfiles ещё не специфицировано
+dotfiles-clone:
+    @echo "dotfiles-clone: см. docs/architecture/ARCHITECTURE.md DOT-4 — ещё не реализовано"
     @exit 1
 
 add-host name:

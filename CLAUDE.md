@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # nixos-config — инструкции для ассистента
 
 ## Что это
@@ -28,6 +32,18 @@ grep -n "STO-4" docs/architecture/*.md
 
 **Приоритет при расхождении:** ARCHITECTURE > STRUCTURE > VPN/AI > ROADMAP. Расхождение не разрешай молча: остановись, назови оба места и предложи правку документа.
 
+## Архитектура каркаса
+
+Паттерн — "dendritic-lite" (ADR-001): `flake.nix` подключает `flake-parts` и
+`import-tree`, который рекурсивно импортирует **все** `.nix`-файлы под `modules/`
+как flake-parts-модули — отдельного списка импортов в репозитории нет. Файл без
+ведущего `_` — это фича (`flake.modules.nixos.<имя>`/`.homeManager.<имя>`) или
+часть `core/`; состав фич в хосте задают только `presets/` и `hosts/` — на этом
+этапе их ещё нет (появятся в ROADMAP R2.x).
+
+Dotfiles — отдельный репозиторий, подключён как `flake = false`-input `dotfiles`;
+конфиги приложений туда, а не сюда (ARCH-15, DOT-3).
+
 ## Жёсткие правила
 
 1. **Секреты.** Никогда не читай, не печатай и не коммить значения секретов, ключи age/SSH, содержимое `secrets/`. В примерах только плейсхолдеры `<…>`. Не проси пользователя прислать значение в чат.
@@ -39,8 +55,17 @@ grep -n "STO-4" docs/architecture/*.md
 
 ## Как работать
 
-- Проверка: `just check`; пока `justfile` нет — `nix flake check` и `nix fmt`. Перед коммитом проверка зелёная.
-- Применение на машине — только по OPS-3: `build` → `nvd diff` → `test` → `boot`. Это делает пользователь.
+- Разработка — внутри `nix develop` (`.envrc` делает это автоматически через direnv).
+- Проверка перед коммитом: `just check` (= `nix fmt` + `nix flake check`); структурные
+  проверки отдельно — `bash scripts/check-structure.sh`; скан секретов отдельно —
+  `bash scripts/check-secrets.sh` (обёртка над `gitleaks detect`).
+- Секрет — только `just sops-edit <файл>`; ключи получателей — `just sops-rekey`.
+- Применение на машине — только по OPS-3: `just build <host>` → `nvd diff` →
+  `just test <host>` → `just boot <host>`. Это делает пользователь, не ассистент
+  (правило 2 выше).
+- `just add-host`/`add-user`/`new-feature` и `just bootstrap`/`dotfiles-clone` —
+  заготовки-стабы (`scripts/new-feature.sh` ещё не создан); не предлагать их как
+  готовые команды до соответствующего шага ROADMAP.
 - Коммиты маленькие, по шагу; сообщение начинается с ID шага: `R1.2: каркас core/`.
 - Ответы на русском, коротко; код и идентификаторы — как в документах.
 - Нужен новый файл — назови путь по STRUCTURE.md, класс (`nixos` / `homeManager`), пресет-владелец и список затрагиваемых файлов.
