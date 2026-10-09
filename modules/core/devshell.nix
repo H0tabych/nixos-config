@@ -13,6 +13,10 @@ _: {
           pkgs.gitleaks
           config.treefmt.build.wrapper
         ];
+        # SEC-9: pre-commit сканер секретов — хук лежит в scripts/git-hooks/.
+        shellHook = ''
+          git config core.hooksPath scripts/git-hooks
+        '';
       };
     };
 }

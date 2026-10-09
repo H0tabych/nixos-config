@@ -1,0 +1,17 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # ПРОВЕРИТЬ: свериться с github.com/DeterminateSystems/nix-installer-action/releases
+      - uses: DeterminateSystems/nix-installer-action@v21
+
+      - name: just check
+        run: nix develop --command just check

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Git pre-commit хук: блокирует коммит с секретом в staged-изменениях (SEC-9).
+# Устанавливается автоматически shellHook из modules/core/devshell.nix (core.hooksPath).
+set -euo pipefail
+
+gitleaks protect --staged --redact -v
