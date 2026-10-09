@@ -12,6 +12,9 @@ in
     my.host = {
       name = "sgms-laptop";
       class = "laptop";
+      # Релиз установщика по R0.1; не обязан совпадать с каналом пакетов (HOST-5).
+      stateVersion = "26.05";
+      users = [ "sgm" ];
 
       gpu = {
         integratedBusId = "0000:00:02.0";

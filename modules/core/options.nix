@@ -15,6 +15,16 @@
               default = false;
               description = "Права администратора (группа wheel).";
             };
+            uid = lib.mkOption {
+              type = lib.types.nullOr lib.types.int;
+              default = null;
+              description = "Явный uid пользователя (R2.2).";
+            };
+            gid = lib.mkOption {
+              type = lib.types.nullOr lib.types.int;
+              default = null;
+              description = "Явный gid основной группы пользователя (R2.2).";
+            };
             capabilities = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [ ];
