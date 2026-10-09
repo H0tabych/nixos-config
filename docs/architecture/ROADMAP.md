@@ -233,8 +233,8 @@
 | R1.2 | C+M | Корень и `modules/core/` по STRUCTURE 2–3.5: `framework`, `options`, `lib`, `treefmt`, `devshell`, `templates`; `modules/_templates/` | `nix develop` даёт оболочку разработки | — | ☑  |
 | R1.3 | C+M | `justfile`, `.envrc`, `.editorconfig`, `.gitignore`, `.gitleaks.toml` | `just check` выполняется | — | ☑ |
 | R1.4 | C+M | Проверки структуры C1–C11 (`scripts/check-structure.sh`, `core/checks-structure.nix`) | Все проходят на пустом каркасе; нарушение (пробный дубль имени) их ломает | — | ☑ |
-| R1.5 | C+M | CI: `check.yml`, `secrets.yml`; сканер секретов на хуке коммита и в CI; базовая линия | CI зелёный на пустом каркасе | — | ☐ |
-| R1.6 | C+M | `docs/`: оглавление, пять документов Архитектуры в `docs/architecture/`, `docs/hosts/sgms-laptop.md` (laptop_spec), заглушки ADR для записей реестра | Каталог документации по STRUCTURE 6 | — | ☐ |
+| R1.5 | C+M | CI: `check.yml`, `secrets.yml`; сканер секретов на хуке коммита и в CI; базовая линия | CI зелёный на пустом каркасе | — | ☑ |
+| R1.6 | C+M | `docs/`: оглавление, пять документов Архитектуры в `docs/architecture/`, `docs/hosts/sgms-laptop.md` (laptop_spec), заглушки ADR для записей реестра | Каталог документации по STRUCTURE 6 | — | ☑ |
 | R1.7 | C+M | Репозиторий dotfiles: `README`, `REGISTRY.md`, `install.sh`, `machine.d.example/`, `theme/palette.toml`, CI линтеров | `install.sh --check-deps` печатает список; CI зелёный | — | ☐ |
 
 **G1.** `just check` и CI зелёные; каркас совпадает со STRUCTURE.md; сканер секретов чист (A3); тег `g1`.
