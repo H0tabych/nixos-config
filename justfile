@@ -8,7 +8,6 @@ fmt:
 
 check: fmt
     nix flake check
-    # check-structure (C1…C11, scripts/check-structure.sh) добавится на шаге R1.4
 
 # TODO(R2.9/18.9): разметка диска и установка ещё не специфицированы пошагово (Этап 2)
 bootstrap host:
