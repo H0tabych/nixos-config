@@ -152,7 +152,7 @@
 **Цель.** Пустой, но полностью проверяемый каркас по STRUCTURE.md.
 **Предусловия.** G0.
 
-| Шаг | Что делаем | Критерий готовности | Откат | ☐ |
+| Шаг | Что делаем | Критерий готовности | Откат | ☑ |
 |---|---|---|---|---|
 | R1.1 | `flake.nix`: inputs (стабильный nixpkgs, `nixpkgs-unstable`, Home Manager нужной ветки, flake-parts, import-tree, sops-nix, disko, treefmt-nix, nixos-hardware по наличию профиля, dotfiles) с `follows`; `flake.lock` | `nix flake metadata` без предупреждений; один Home Manager (A16) | Удалить ветку | ☑  |
 | R1.2 | Корень и `modules/core/` по STRUCTURE 2–3.5: `framework`, `options`, `lib`, `treefmt`, `devshell`, `templates`; `modules/_templates/` | `nix develop` даёт оболочку разработки | — | ☑  |
