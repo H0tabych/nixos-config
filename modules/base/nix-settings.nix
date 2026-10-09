@@ -4,46 +4,44 @@
 # Зависимости: —
 { inputs, ... }:
 {
-  flake.modules.nixos.nix-settings =
-    _:
-    {
-      nix.settings = {
-        experimental-features = [
-          "nix-command"
-          "flakes"
-        ];
-        # @wheel, а не имя пользователя — ARCH-17/FEAT-4.
-        trusted-users = [
-          "root"
-          "@wheel"
-        ];
-        # Явные подписчики кэша (совпадают со значениями по умолчанию `nix show-config`,
-        # но зафиксированы явно — критерий шага R2.2).
-        substituters = [ "https://cache.nixos.org" ];
-        trusted-public-keys = [
-          "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-        ];
-        # Оптимизация store — один механизм (не вместе с nix.optimise.automatic).
-        auto-optimise-store = true;
-      };
-
-      nix.gc = {
-        automatic = true;
-        dates = "weekly";
-        options = "--delete-older-than 30d";
-      };
-
-      nixpkgs.config.allowUnfree = true;
-
-      # Нестабильный канал — точечно, через overlay с причиной (ARCH-14): пакеты без
-      # релиза в стабильной ветке доступны как pkgs.unstable.<имя>.
-      nixpkgs.overlays = [
-        (_final: prev: {
-          unstable = import inputs.nixpkgs-unstable {
-            inherit (prev) system;
-            config.allowUnfree = true;
-          };
-        })
+  flake.modules.nixos.nix-settings = _: {
+    nix.settings = {
+      experimental-features = [
+        "nix-command"
+        "flakes"
       ];
+      # @wheel, а не имя пользователя — ARCH-17/FEAT-4.
+      trusted-users = [
+        "root"
+        "@wheel"
+      ];
+      # Явные подписчики кэша (совпадают со значениями по умолчанию `nix show-config`,
+      # но зафиксированы явно — критерий шага R2.2).
+      substituters = [ "https://cache.nixos.org" ];
+      trusted-public-keys = [
+        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+      ];
+      # Оптимизация store — один механизм (не вместе с nix.optimise.automatic).
+      auto-optimise-store = true;
     };
+
+    nix.gc = {
+      automatic = true;
+      dates = "weekly";
+      options = "--delete-older-than 30d";
+    };
+
+    nixpkgs.config.allowUnfree = true;
+
+    # Нестабильный канал — точечно, через overlay с причиной (ARCH-14): пакеты без
+    # релиза в стабильной ветке доступны как pkgs.unstable.<имя>.
+    nixpkgs.overlays = [
+      (_final: prev: {
+        unstable = import inputs.nixpkgs-unstable {
+          inherit (prev) system;
+          config.allowUnfree = true;
+        };
+      })
+    ];
+  };
 }
