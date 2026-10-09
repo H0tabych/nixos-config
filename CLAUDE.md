@@ -49,4 +49,4 @@ grep -n "STO-4" docs/architecture/*.md
 
 - Трек: `C — чистая установка`
 - Этап: 0 (подготовка). Последний пройденный Gate: нет
-- Репозиторий: orphan-ветка `new-start`; отправлять только в новый приватный репозиторий
+- Репозиторий: `github.com/H0tabych/nixos-config` (приватный), orphan-ветка `main`; dotfiles — `github.com/H0tabych/.dotfiles` (приватный). Старая история отведена в локальную ветку `old-main`, не отправлять
