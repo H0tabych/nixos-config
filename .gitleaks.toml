@@ -1,0 +1,12 @@
+# Правила сканера секретов (SEC-9). Шаблоны VPN-SEC-8 (UUID клиентов,
+# ключи, адреса выхода) добавятся на шаге подсистемы VPN (Этап 3).
+title = "nixos-config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Заведомо фиктивные значения для тестов (STRUCTURE.md, раздел 5.1)"
+paths = [
+  '''tests/fixtures/.*''',
+]

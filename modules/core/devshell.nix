@@ -1,7 +1,6 @@
 # Каркас: devshell · Домен: core
 # Оболочка разработки репозитория (.envrc подключит её через `use flake`).
-_:
-{
+_: {
   perSystem =
     { config, pkgs, ... }:
     {

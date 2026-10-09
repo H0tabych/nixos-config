@@ -1,7 +1,6 @@
 # Каркас: lib · Домен: core
 # Хелперы путей к корню репозитория (STR-9): фичи обращаются к ним вместо ../../.
-_:
-{
+_: {
   flake.lib.repo = {
     secrets = path: ../../secrets + "/${path}";
     assets = path: ../../assets + "/${path}";

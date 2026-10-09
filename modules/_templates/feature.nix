@@ -3,14 +3,11 @@
 # Фича: <имя-файла> · Слот: <слот или "—"> · Домен: <домен> · Классы: <nixos|homeManager> · Для: <кто>
 # Контракт: <ID правила, если есть>. <чем фича владеет>.
 # Зависимости: по составу пресета; жёсткие — через assertions ниже.
-_:
-{
-  flake.modules.nixos.CHANGE_ME =
-    _:
-    {
-      # assertions = [{
-      #   assertion = …;
-      #   message = "фича CHANGE_ME требует … в составе хоста";
-      # }];
-    };
+_: {
+  flake.modules.nixos.CHANGE_ME = _: {
+    # assertions = [{
+    #   assertion = …;
+    #   message = "фича CHANGE_ME требует … в составе хоста";
+    # }];
+  };
 }
