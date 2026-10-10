@@ -2,11 +2,16 @@
 # Контракт: ARCH-4, HOST-1, STR-8. Композиция хоста + факты my.host.* (без пакетов и сервисов).
 # Зависимости: presets base/laptop/development; gpu-* подключаются прямо из хоста
 # (HOST-3); machines/sgms-laptop/hardware.nix — исключение STR-9.
-{ config, ... }:
+{ config, inputs, ... }:
 let
   n = config.flake.modules.nixos;
 in
 {
+  flake.nixosConfigurations.sgms-laptop = inputs.nixpkgs.lib.nixosSystem {
+    system = "x86_64-linux";
+    modules = [ n.sgms-laptop ];
+  };
+
   flake.modules.nixos.sgms-laptop = {
     imports = [
       n.base

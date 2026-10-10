@@ -1,0 +1,17 @@
+name: build-vm
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-vm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # ПРОВЕРИТЬ: свериться с github.com/DeterminateSystems/nix-installer-action/releases
+      - uses: DeterminateSystems/nix-installer-action@v21
+
+      - name: build ci-vm
+        run: nix build .#nixosConfigurations.ci-vm.config.system.build.vm --print-build-logs

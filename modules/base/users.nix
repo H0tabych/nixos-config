@@ -25,6 +25,8 @@ in
       }) hostUsers;
 
       home-manager.users = lib.mapAttrs (_: u: {
+        # HOST-5: версия состояния HM по умолчанию берётся из my.host.stateVersion.
+        home.stateVersion = config.my.host.stateVersion;
         imports =
           lib.optional (lib.hasAttr "user-base" hm) hm.user-base
           ++ lib.concatMap (c: lib.optional (lib.hasAttr c hm) hm.${c}) u.capabilities;

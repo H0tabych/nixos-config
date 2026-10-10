@@ -4,7 +4,8 @@
 # логи, снимки, данные сервисов вне снимков/бэкапа, swap (сам swap-файл —
 # storage/swap, R5.1, STO-4).
 # Зависимости: host-facts (my.host.disk.device); assertions ниже.
-_: {
+{ inputs, ... }:
+{
   flake.modules.nixos.layout =
     { config, ... }:
     let
@@ -16,6 +17,8 @@ _: {
       ];
     in
     {
+      imports = [ inputs.disko.nixosModules.disko ];
+
       assertions = [
         {
           assertion = config.my.host.disk.device != null;
