@@ -1,13 +1,22 @@
 # Фича: sgms-laptop · Слот: — · Домен: hosts · Классы: N · Для: sgm
 # Контракт: ARCH-4, HOST-1, STR-8. Композиция хоста + факты my.host.* (без пакетов и сервисов).
-# Зависимости: host-facts (схема опций). Пресеты и machines/sgms-laptop/hardware.nix — с R2.6.
+# Зависимости: presets base/laptop/development; gpu-* подключаются прямо из хоста
+# (HOST-3); machines/sgms-laptop/hardware.nix — исключение STR-9.
 { config, ... }:
 let
   n = config.flake.modules.nixos;
 in
 {
   flake.modules.nixos.sgms-laptop = {
-    imports = [ n.host-facts ];
+    imports = [
+      n.base
+      n.laptop
+      n.development
+      n.gpu-integrated
+      n.gpu-discrete
+      n.gpu-hybrid
+      ../../machines/sgms-laptop/hardware.nix
+    ];
 
     my.host = {
       name = "sgms-laptop";

@@ -1,5 +1,6 @@
 # Фича: users · Слот: — · Домен: base · Классы: N · Для: всех хостов
-# Контракт: USER-2, USER-3 (учётные записи + подключение HM-модулей по capability).
+# Контракт: USER-2, USER-3 (учётные записи + подключение HM-модулей по capability);
+# ADR-32 (user-base подключается каждому пользователю независимо от capability).
 # Зависимости: host-facts (my.host.users), реестр my.users (core/options.nix).
 { config, ... }:
 let
@@ -24,7 +25,9 @@ in
       }) hostUsers;
 
       home-manager.users = lib.mapAttrs (_: u: {
-        imports = lib.concatMap (c: lib.optional (lib.hasAttr c hm) hm.${c}) u.capabilities;
+        imports =
+          lib.optional (lib.hasAttr "user-base" hm) hm.user-base
+          ++ lib.concatMap (c: lib.optional (lib.hasAttr c hm) hm.${c}) u.capabilities;
       }) hostUsers;
     };
 }

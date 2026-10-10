@@ -133,7 +133,11 @@ fi
 if [ -d modules/presets ] || [ -d modules/hosts ]; then
   while IFS= read -r name; do
     [ -z "$name" ] && continue
-    count=$(grep -rlE "\\b$name\\b" modules/presets modules/hosts --include='*.nix' 2>/dev/null | wc -l || true)
+    # Ищем обращение к фиче как к модулю (n.<имя> / hm.<имя>), а не любое
+    # вхождение слова — иначе опции вида my.host.users ложно совпадают с
+    # фичей users (STR-9: алиасы n/hm — единственный способ сослаться на
+    # config.flake.modules.<класс> в presets/hosts).
+    count=$(grep -rlE "\\b(n|hm)\\.$name\\b" modules/presets modules/hosts --include='*.nix' 2>/dev/null | wc -l || true)
     if [ "$count" -gt 1 ]; then
       err "C10: фича $name подключена более чем в одном пресете/хосте"
       c10_fail=1
