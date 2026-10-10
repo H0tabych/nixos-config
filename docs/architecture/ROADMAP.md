@@ -177,7 +177,7 @@
 | R2.2 | `base`: `nix-settings` (подписчики кэша, `pkgs.unstable`, политика unfree), `locale-keyboard`, `users` (**uid и gid заданы явно**), `hm` (`useGlobalPkgs`), `fonts`; `stateVersion` по R0.1 | `nix eval` значений проходит | — | ☑ |
 | R2.3 | `hardware`: `gpu-integrated`, `gpu-discrete` (открытые модули, `powerManagement`), `gpu-hybrid` (offload, **стабильные udev-идентификаторы**), `firmware`, `audio`, `bluetooth`, `automount`, `power`, `sleep` (параметры без смещения) | Сборка проходит | — | ☑ |
 | R2.4 | `security`: `ssh`, `firewall` (default deny); сеть: `network-manager` | Сборка проходит; порты закрыты | — | ☑ |
-| R2.5 | `storage/layout`: режим `disko` — ESP, LUKS2, Btrfs с подтомами по STO-1 (корень, `@home`, `@nix`, логи, снимки, данные сервисов, swap) | Описание проходит `nix eval` | — | ☐ |
+| R2.5 | `storage/layout`: режим `disko` — ESP, LUKS2, Btrfs с подтомами по STO-1 (корень, `@home`, `@nix`, логи, снимки, данные сервисов, swap) | Описание проходит `nix eval` | — | ☑ |
 | R2.6 | Пресеты `base`, `laptop`, `user-base`, `development` (минимум — редактор), хост-файл, `machines/sgms-laptop/hardware.nix` | `just check` зелёный | — | ☐ |
 | R2.7 | Хост `ci-vm` и `build-vm.yml`: полная сборка в CI (HOST-4); локальный запуск ВМ | ВМ загружается в консоль; CI зелёный | — | ☐ |
 | R2.8 | **Установка** (Приложение B): образ установщика → временный путь в сеть → ключ хоста доставлен **до** активации (SEC-12) → disko (**PNR-2**) → `nixos-install` из flake → первая загрузка → пароль пользователя → возврат данных из бэкапа | `systemctl --failed` пуст; `nvidia-smi` видит GPU; offload работает; Wi-Fi, звук, Bluetooth работают | Переустановка по тем же шагам | ☐ |
