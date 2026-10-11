@@ -1,9 +1,12 @@
 # Фича: tunnel-xray · Слот: tunnel · Домен: network · Классы: N · Для: хоста с пресетом tunnel
-# Контракт: VPN-CLI-1..9, VPN-MOD-2/4, NET-1..4, NET-9, NET-10, SEC-4. Единственный
-# владелец юнита tunnel-xray и его конфига (VPN-CLI-1). Конфиг рендерится sops-nix
-# из шаблона при старте — в /nix/store попадают только плейсхолдеры (VPN-CLI-2).
-# Постквантовая подпись (mldsa65Verify) сейчас не заполняется: сервер её не
-# выпускает (VPN-CLI-3 — документированное исключение до правки сервера).
+# Контракт: VPN-CLI-1..9, VPN-MOD-2/4, NET-1..4, NET-9, NET-10, SEC-4, VPN-RTE-1..8,
+# VPN-DNS-1, VPN-DNS-3..5. Единственный владелец юнита tunnel-xray и его конфига
+# (VPN-CLI-1). Конфиг рендерится sops-nix из шаблона при старте — в /nix/store
+# попадают только плейсхолдеры (VPN-CLI-2). Постквантовая подпись (mldsa65Verify)
+# сейчас не заполняется: сервер её не выпускает (VPN-CLI-3 — документированное
+# исключение до правки сервера). DNS и routing строятся из my.tunnel.policy.*
+# данными _tunnel-xray-policy.nix (STR-6); domainStrategy = "IPOnDemand" — M1
+# (VPN-RTE-3), R5.4 заменит на "AsIs" и добавит tun-in/dns-out (P.3).
 # Режим M2 (TUN, killswitch, R5.4) — только зарезервированная ветка по my.tunnel.mode.
 # Зависимости: host-facts (my.host.name), tunnel-facts (my.tunnel.*; через
 # config.my.*, не import — ARCH-3).
@@ -24,13 +27,20 @@ in
       cfg = config.my.tunnel;
       pkg = pkgs.xray;
       ph = name: config.sops.placeholder.${name};
+      policy = import ./_tunnel-xray-policy.nix { inherit lib; };
 
       httpProxyUrl = "http://${cfg.local.http.address}:${toString cfg.local.http.port}";
       socksProxyUrl = "socks5h://${cfg.local.socks.address}:${toString cfg.local.socks.port}";
       noProxyStr = lib.concatStringsSep "," cfg.local.noProxy;
+      queryStrategy = if cfg.ipv6 == "blocked" then "UseIPv4" else "UseIP";
 
       xrayConfig = {
         log.loglevel = "warning";
+        dns = policy.mkDns {
+          inherit (cfg.policy) dnsDirect direct;
+          inherit queryStrategy;
+          inherit (policy) dohResolvers;
+        };
         inbounds = [
           {
             tag = "sock-in";
@@ -89,7 +99,12 @@ in
               };
             };
           }
-        ];
+        ]
+        ++ policy.mkOutbounds { inherit (cfg) ipv6; };
+        routing = {
+          domainStrategy = "IPOnDemand";
+          rules = policy.mkRoutingRules cfg.policy;
+        };
       };
     in
     {

@@ -1,8 +1,8 @@
 # Фича: tunnel-facts · Слот: — · Домен: network · Классы: N · Для: хоста с пресетом tunnel
-# Контракт: ARCH-4, VPN_SUBSYSTEM 2.3. Объявление my.tunnel.* и публичных умолчаний
-# (аналог host-facts); значений секретов здесь нет (SEC-2). Полная таблица 2.3
-# (policy.*, ipv6, killswitch.allowedInterfaces, bypass.units) появится при
-# потребителях — R3.4 (политика) и R5.4 (режим M2).
+# Контракт: ARCH-4, VPN_SUBSYSTEM 2.3, VPN-RTE-4..6, VPN-DNS-3/4, VPN-INT-5.
+# Объявление my.tunnel.* и публичных умолчаний (аналог host-facts); значений
+# секретов здесь нет (SEC-2). killswitch.allowedInterfaces и bypass.units —
+# R5.4 (режим M2), их тут ещё нет.
 # Зависимости: —
 _: {
   flake.modules.nixos.tunnel-facts =
@@ -56,6 +56,50 @@ _: {
             ];
             description = "Исключения прокси-переменных M1 (VPN_SUBSYSTEM, приложение).";
           };
+        };
+
+        policy = {
+          direct = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [
+              "geosite:category-ru"
+              "domain:ru"
+              "domain:su"
+              "domain:xn--p1ai"
+            ];
+            description = "Домены и geo-теги для прямого соединения (VPN-RTE-4).";
+          };
+          proxy = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+            description = "Домены принудительно через туннель; приоритетнее direct (VPN-RTE-5).";
+          };
+          block = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+            description = "Блокируемые домены; включается осознанно (VPN-RTE-6).";
+          };
+          directCidrs = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+            description = "Сети напрямую сверх частных, например корпоративный VPN (VPN-INT-5).";
+          };
+          dnsDirect = lib.mkOption {
+            type = lib.types.str;
+            # Яндекс.DNS — публичный резолвер локальной юрисдикции; при другом
+            # провайдере или RTT переопределяется хостом (VPN-DNS-3).
+            default = "77.88.8.8";
+            description = "Резолвер локальной юрисдикции для доменов direct (VPN-DNS-3).";
+          };
+        };
+
+        ipv6 = lib.mkOption {
+          type = lib.types.enum [
+            "blocked"
+            "tunneled"
+          ];
+          default = "blocked";
+          description = "Политика IPv6; tunneled — только после проверки выхода (VPN-DNS-4).";
         };
       };
     };
