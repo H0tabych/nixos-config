@@ -14,9 +14,11 @@ in
       hm = outer.flake.modules.homeManager;
     in
     {
-      users.users = lib.mapAttrs (_: u: {
+      users.users = lib.mapAttrs (name: u: {
         isNormalUser = true;
         inherit (u) uid;
+        # Основная группа — личная (gid ниже), а не дефолтная "users" (R2.2).
+        group = name;
         extraGroups = lib.optional u.admin "wheel";
       }) hostUsers;
 
