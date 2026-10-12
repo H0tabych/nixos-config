@@ -8,8 +8,7 @@
 # ссылка создаётся безусловно и становится рабочей без пересборки, когда каталог
 # появляется в рабочей копии (DOT-4 — "без приложения — пропуск" про ещё
 # не подтянутый nix flake update, а не про падение активации).
-# Зависимости: host-facts (my.host.{outputs,battery,gpu,keyboardLayout,users}),
-# core/options (my.users.<имя>.dotfiles.source) — только чтение значений (ARCH-3).
+# Зависимости: host-facts, core/options (my.users.*) — только чтение (ARCH-3).
 {
   config,
   inputs,
@@ -18,6 +17,10 @@
 }:
 let
   outer = config;
+
+  # USER-5: системные интеграции «на пользователя» применяются к пересечению
+  # my.host.users и пользователей с нужной capability.
+  withCap = cap: lib.attrNames (lib.filterAttrs (_: u: lib.elem cap u.capabilities) outer.my.users);
 
   # Не-приложения на верхнем уровне репозитория dotfiles (REGISTRY.md их не содержит).
   nonAppEntries = [
@@ -65,63 +68,32 @@ in
     }:
     let
       host = config.my.host;
-
-      # Именованная строка — только для выходов с подтверждённым connector (DESK-8);
-      # завершающий wildcard — безопасный fallback для любых остальных физических
-      # выходов (A14: не навязывать им режим неподтверждённого/внутреннего монитора).
-      monitorLines =
-        lib.concatMapStrings (
-          o:
-          "monitor=${
-            if o.connector == null then "" else o.connector
-          },${toString o.width}x${toString o.height}@${toString o.refreshRate},auto,1\n"
-        ) host.outputs
-        + "monitor=,preferred,auto,1\n";
-
-      machineFiles = {
-        "hypr-monitors.conf" = ''
-          # Сгенерировано Nix (dotfiles-link, DOT-5) из my.host.outputs — не редактируйте руками.
-        ''
-        + monitorLines;
-
-        "hypr-input.conf" = ''
-          # Сгенерировано Nix (dotfiles-link, DOT-5) из my.host.keyboardLayout (DESK-7).
-          input {
-              kb_layout = ${host.keyboardLayout}
-              kb_options = grp:alt_shift_toggle
-          }
-        '';
-
-        "launch-prefix" = ''
-          # Префикс запуска графических приложений (DESK-2). Механизм сессии —
-          # UWSM (session-hyprland, R4.3): приложения из лаунчера/бара получают
-          # прокси-переменные и остальное окружение сессии через `uwsm app --`.
-          LAUNCH_PREFIX=uwsm app --
-        '';
-
-        "gpu-env" = ''
-          # Сгенерировано Nix (dotfiles-link, DOT-5) из my.host.gpu — не редактируйте руками.
-          GPU_INTEGRATED_BUS_ID=${toString host.gpu.integratedBusId}
-          GPU_DISCRETE_BUS_ID=${toString host.gpu.discreteBusId}
-          GPU_VRAM_GIB=${toString host.gpu.vramGiB}
-        '';
-
-        "battery-info" = ''
-          # Сгенерировано Nix (dotfiles-link, DOT-5) из my.host.battery. Имя устройства
-          # (/sys/class/power_supply/BAT*) не подтверждено — docs/hosts/sgms-laptop.md §8.
-          BATTERY_PRESENT=${if host.battery.present then "1" else "0"}
-          BATTERY_CAPACITY_WH=${toString host.battery.capacityWh}
-        '';
+      machineFiles = (import ./_dotfiles-link-machine.nix { inherit lib; }).mkMachineFiles {
+        inherit host;
       };
+      desktopUsers = lib.intersectLists host.users (withCap "desktop");
     in
     {
-      systemd.tmpfiles.rules = lib.concatMap (
-        user:
-        [ "d /home/${user}/.config/machine.d 0755 ${user} ${user} - -" ]
-        ++ lib.mapAttrsToList (
-          name: text: "L+ /home/${user}/.config/machine.d/${name} - - - - ${pkgs.writeText name text}"
-        ) machineFiles
-      ) host.users;
+      # ~/.config объявлен явно: неявно создаваемые systemd-tmpfiles родительские
+      # каталоги достаются вызывающему процессу (root) — chown применяется только
+      # к последнему компоненту пути. На чистой установке (18.9) ~/.config ещё
+      # нет, systemd-tmpfiles-setup идёт раньше home-manager-<user>.service, и
+      # тот (User=<user>) не смог бы записать ~/.config/*.
+      # Владелец обоих каталогов — эта фича (DOT-5); shell-zsh кладёт файл в
+      # machine.d, но каталогами не владеет (ARCH-5).
+      systemd.tmpfiles.rules =
+        lib.concatMap (user: [
+          "d /home/${user}/.config 0755 ${user} ${user} - -"
+          "d /home/${user}/.config/machine.d 0755 ${user} ${user} - -"
+        ]) host.users
+        # machineFiles — значения рабочего стола, поэтому только пользователям с
+        # capability desktop (USER-5), а не всем пользователям хоста.
+        ++ lib.concatMap (
+          user:
+          lib.mapAttrsToList (
+            name: text: "L+ /home/${user}/.config/machine.d/${name} - - - - ${pkgs.writeText name text}"
+          ) machineFiles
+        ) desktopUsers;
     };
 
   flake.modules.homeManager.dotfiles-link =
