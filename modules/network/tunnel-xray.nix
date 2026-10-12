@@ -1,12 +1,18 @@
 # Фича: tunnel-xray · Слот: tunnel · Домен: network · Классы: N · Для: хоста с пресетом tunnel
-# Контракт: VPN-CLI-1..9, VPN-MOD-2/4, NET-1..4, NET-9, NET-10, SEC-4, VPN-RTE-1..8,
+# Контракт: VPN-CLI-1..9, VPN-MOD-2/4, NET-1..4, NET-9, SEC-4, VPN-RTE-1..8,
 # VPN-DNS-1, VPN-DNS-3..5. Единственный владелец юнита tunnel-xray и его конфига
 # (VPN-CLI-1). Конфиг рендерится sops-nix из шаблона при старте — в /nix/store
-# попадают только плейсхолдеры (VPN-CLI-2). Постквантовая подпись (mldsa65Verify)
-# сейчас не заполняется: сервер её не выпускает (VPN-CLI-3 — документированное
-# исключение до правки сервера). DNS и routing строятся из my.tunnel.policy.*
-# данными _tunnel-xray-policy.nix (STR-6); domainStrategy = "IPOnDemand" — M1
-# (VPN-RTE-3), R5.4 заменит на "AsIs" и добавит tun-in/dns-out (P.3).
+# попадают только плейсхолдеры (VPN-CLI-2).
+# Прокси-переменные графической сессии (NET-10, DOT-7) эта фича НЕ доставляет:
+# env-файл менеджера сессий принадлежит слоту session (session-hyprland), иначе
+# замена композитора (DESK-10) потребовала бы правки сетевой фичи (ARCH-16, SLOT-3).
+# Постквантовая подпись (mldsa65Verify) не заполняется: выход её пока не
+# выпускает (VPN-SRV-3 не выполнен на сервере) — это отступление, а не исключение
+# по VPN-CLI-3 (ядро xray-core проверку поддерживает); запись со сроком
+# пересмотра — в docs/runbook/tunnel.md.
+# DNS и routing строятся из my.tunnel.policy.* данными _tunnel-xray-policy.nix
+# (STR-6); domainStrategy = "IPOnDemand" — M1 (VPN-RTE-3), R5.4 заменит на "AsIs"
+# и добавит tun-in/dns-out (P.3).
 # Режим M2 (TUN, killswitch, R5.4) — только зарезервированная ветка по my.tunnel.mode.
 # Зависимости: host-facts (my.host.name), tunnel-facts (my.tunnel.*; через
 # config.my.*, не import — ARCH-3).
@@ -29,9 +35,6 @@ in
       ph = name: config.sops.placeholder.${name};
       policy = import ./_tunnel-xray-policy.nix { inherit lib; };
 
-      httpProxyUrl = "http://${cfg.local.http.address}:${toString cfg.local.http.port}";
-      socksProxyUrl = "socks5h://${cfg.local.socks.address}:${toString cfg.local.socks.port}";
-      noProxyStr = lib.concatStringsSep "," cfg.local.noProxy;
       queryStrategy = if cfg.ipv6 == "blocked" then "UseIPv4" else "UseIP";
 
       xrayConfig = {
@@ -41,32 +44,7 @@ in
           inherit queryStrategy;
           inherit (policy) dohResolvers;
         };
-        inbounds = [
-          {
-            tag = "sock-in";
-            listen = cfg.local.socks.address;
-            port = cfg.local.socks.port;
-            protocol = "socks";
-            settings = {
-              udp = true;
-              auth = "noauth";
-            };
-            sniffing = {
-              enabled = true;
-              destOverride = [
-                "http"
-                "tls"
-              ];
-            };
-          }
-          {
-            tag = "http-in";
-            listen = cfg.local.http.address;
-            port = cfg.local.http.port;
-            protocol = "http";
-            settings = { };
-          }
-        ];
+        inbounds = policy.mkInbounds { inherit (cfg) local; };
         outbounds = [
           {
             tag = "proxy";
@@ -95,6 +73,8 @@ in
                 shortId = ph "tunnel.shortId";
                 fingerprint = ph "tunnel.fingerprint";
                 spiderX = "/";
+                # Пустая строка = проверка выключена. Заполнить ключом проверки
+                # сразу после включения подписи на выходе (VPN-SRV-3).
                 mldsa65Verify = "";
               };
             };
@@ -124,27 +104,15 @@ in
         restartUnits = [ "tunnel-xray.service" ];
       };
 
-      # Единственный механизм доставки в графическую сессию — env-файл менеджера
-      # сессий (NET-10, DOT-7); environment.sessionVariables сюда не используется,
-      # чтобы не завести второй механизм (R4.3).
-      environment.etc."xdg/uwsm/env".text = lib.mkIf (cfg.mode == "m1") ''
-        export http_proxy=${httpProxyUrl}
-        export HTTP_PROXY=${httpProxyUrl}
-        export https_proxy=${httpProxyUrl}
-        export HTTPS_PROXY=${httpProxyUrl}
-        export all_proxy=${socksProxyUrl}
-        export ALL_PROXY=${socksProxyUrl}
-        export no_proxy=${noProxyStr}
-        export NO_PROXY=${noProxyStr}
-      '';
-
       systemd.services.tunnel-xray = {
         description = "Клиент туннеля (VLESS + Reality, M1)";
         wantedBy = [ "multi-user.target" ];
-        after = [
-          "network-online.target"
-          "sops-nix.service"
-        ];
+        # sops-nix рендерит секреты и шаблоны в system.activationScripts.setupSecrets,
+        # юнита sops-nix.service не существует — ordering к нему systemd молча
+        # игнорировал. Активация идёт до старта юнитов, поэтому файл шаблона уже
+        # на месте; перерисовку при смене значения обеспечивает restartUnits
+        # у sops.templates.tunnel-xray ниже.
+        after = [ "network-online.target" ];
         wants = [ "network-online.target" ];
         serviceConfig = {
           DynamicUser = true;

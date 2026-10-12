@@ -9,9 +9,14 @@
 {
   # Публичные DoH-резолверы для доменов, уходящих в туннель (не секрет, не
   # опция my.* — такой же случай, как порт 443 в tunnel-xray.nix).
+  # Адреса заданы IP-литералами, а не доменами: имя DoH-сервера пришлось бы
+  # сначала разрешить, а в этой DNS-секции для него нет сервера (у прямого
+  # резолвера skipFallback = true и список domains), поэтому бутстрап-запрос
+  # уходил бы системному резолверу провайдера — против NET-5. Сертификаты
+  # Cloudflare и Quad9 покрывают эти IP, поэтому DoH по IP работает.
   dohResolvers = [
-    "https://cloudflare-dns.com/dns-query"
-    "https://dns.quad9.net/dns-query"
+    "https://1.1.1.1/dns-query"
+    "https://9.9.9.9/dns-query"
   ];
 
   mkDns =
@@ -32,6 +37,39 @@
       ++ dohResolvers;
       inherit queryStrategy;
     };
+
+  # Слушатели локального режима: только loopback, адреса и порты — из
+  # my.tunnel.local.* (NET-4, VPN-CLI-9). sniffing включён на SOCKS-входе, он
+  # получает соединения по IP; у HTTP-прокси имя хоста есть в самом запросе,
+  # поэтому там не нужен (VPN-CLI-10).
+  mkInbounds =
+    { local }:
+    [
+      {
+        tag = "sock-in";
+        listen = local.socks.address;
+        port = local.socks.port;
+        protocol = "socks";
+        settings = {
+          udp = true;
+          auth = "noauth";
+        };
+        sniffing = {
+          enabled = true;
+          destOverride = [
+            "http"
+            "tls"
+          ];
+        };
+      }
+      {
+        tag = "http-in";
+        listen = local.http.address;
+        port = local.http.port;
+        protocol = "http";
+        settings = { };
+      }
+    ];
 
   mkOutbounds = { ipv6 }: [
     {
