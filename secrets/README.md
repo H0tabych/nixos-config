@@ -11,10 +11,13 @@
 | `secrets/common.yaml` | `tunnel.fingerprint` | `tunnel-xray` |
 | `secrets/hosts/sgms-laptop.yaml` | `tunnel.clientId` | `tunnel-xray` |
 | `secrets/hosts/sgms-laptop.yaml` | `tunnel.shortId` | `tunnel-xray` |
-| `secrets/hosts/sgms-laptop.yaml` | `vpnClient.config` | `vpn-client` |
+| `secrets/hosts/sgms-laptop.yaml` | `vpnClient.credentials` | `vpn-client` |
 
 Строки появляются по мере объявления `sops.secrets` в фичах-потребителях
-(SEC-4) — начиная с `tunnel-facts` (R3.2). `vpnClient.config` — весь
-`.ovpn`-профиль (сертификаты, ключи, auth) одним секретом (R4.8); ключ плоский
-(`sops.secrets."vpnClient.config"`), не вложенный (`vpnClient: config:`) —
-sops-nix ищет ключ плоско, вложенные структуры не поддерживает.
+(SEC-4) — начиная с `tunnel-facts` (R3.2). `vpnClient.credentials` — только
+логин и пароль, двумя строками, формат `auth-user-pass` OpenVPN (R4.12: правка
+R4.8 — структура `.ovpn`-профиля публична для коммерческого/штатного VPN,
+SEC-2 класс C, секретом не является и сюда не попадает, см. `assets/README.md`
+и `assets/vpn-client/<хост>.ovpn`). Ключ плоский
+(`sops.secrets."vpnClient.credentials"`), не вложенный — sops-nix ищет ключ
+плоско, вложенные структуры не поддерживает.

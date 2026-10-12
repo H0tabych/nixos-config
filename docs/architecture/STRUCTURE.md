@@ -272,7 +272,7 @@ creation_rules:
 
 ### 4.2 `assets/`
 
-Бинарные и крупные ресурсы **Nix-владеемых** компонентов (фон менеджера входа, значки загрузчика). Ресурсы пользовательских приложений — в dotfiles. Структура: `assets/<потребитель>/<файл>`. Файл ≤ 2 МБ; крупнее — внешний источник с хэшем. Лицензия файла указана в `assets/README.md`.
+Бинарные и текстовые ресурсы **Nix-владеемых** компонентов, которые не выражаются как значение внутри самой фичи (фон менеджера входа, значки загрузчика, структура `.ovpn`-профиля `vpn-client` — SEC-2 класс C, не секрет). Ресурсы пользовательских приложений — в dotfiles. Структура: `assets/<потребитель>/<файл>`. Файл ≤ 2 МБ; крупнее — внешний источник с хэшем. Происхождение и лицензия файла (если применимо) — в `assets/README.md`.
 
 ### 4.3 `templates/`
 
@@ -572,7 +572,7 @@ nixos-config/
 │
 ├── machines/sgms-laptop/hardware.nix
 ├── secrets/                  README.md  common.yaml  hosts/sgms-laptop.yaml  users/sgm.yaml
-├── assets/                   README.md  sddm/
+├── assets/                   README.md  sddm/  vpn-client/
 ├── templates/                python/  rust/  cpp/  sql/  ml-cuda/
 ├── tests/                    killswitch-fail-fast.nix  agent-sandbox.nix  tunnel-config.nix  fixtures/
 ├── scripts/                  check-structure.sh  check-lock.sh  check-doc-ids.sh
@@ -602,7 +602,7 @@ dotfiles/                     (отдельный репозиторий)
 | `base` | класс хоста | nix-settings, locale-keyboard, users, hm, fonts, host-facts, sops, ssh, firewall, hardening, network-manager, shell-zsh, env-manager-direnv, vcs-tools, dotfiles-link | — |
 | `laptop` | класс хоста | power, sleep, layout, swap, maintenance, firmware, audio, bluetooth, automount | — |
 | `user-base` | базис пользователя (ADR-32) | — | dotfiles-link, user-dirs |
-| `desktop` | capability | session-hyprland, display-manager-sddm, bar-waybar, lockscreen-hyprlock, idle-hypridle, polkit-agent-hyprpolkitagent, osd-swayosd, theme | notifier-mako, launcher-rofi, wallpaper-hyprpaper, screenshot-grim, clipboard-cliphist, polkit-agent-hyprpolkitagent, osd-swayosd, automount-agent-udiskie, terminal-foot, file-manager-yazi, theme |
+| `desktop` | capability | session-hyprland, display-manager-sddm, bar-waybar, lockscreen-hyprlock, idle-hypridle, polkit-agent-hyprpolkitagent, osd-swayosd, bluetooth-manager-blueman, theme | notifier-mako, launcher-rofi, wallpaper-hyprpaper, screenshot-grim, clipboard-cliphist, polkit-agent-hyprpolkitagent, osd-swayosd, automount-agent-udiskie, bluetooth-manager-blueman, terminal-foot, file-manager-yazi, theme |
 | `development` | capability | editor-neovim | lsp-global, databases, [api-tools] |
 | `containers` | capability | containers-docker | containers-docker |
 | `office` | capability | — | office-suite-libreoffice, mail-calendar-thunderbird, documents-zathura, communication-telegram |

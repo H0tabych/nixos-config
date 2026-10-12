@@ -170,8 +170,8 @@ if [ -d modules/presets ] || [ -d modules/hosts ]; then
     n_count=0
     hm_count=0
     if [ -n "$composition_files" ]; then
-      n_count=$(echo "$composition_files" | xargs grep -lE "\\bn\\.$name\\b" 2>/dev/null | wc -l || true)
-      hm_count=$(echo "$composition_files" | xargs grep -lE "\\bhm\\.$name\\b" 2>/dev/null | wc -l || true)
+      n_count=$(echo "$composition_files" | xargs grep -lE "\\bn\\.$name(\$|[^A-Za-z0-9_-])" 2>/dev/null | wc -l || true)
+      hm_count=$(echo "$composition_files" | xargs grep -lE "\\bhm\\.$name(\$|[^A-Za-z0-9_-])" 2>/dev/null | wc -l || true)
     fi
     if [ "$n_count" -gt 1 ] || [ "$hm_count" -gt 1 ]; then
       err "C10: фича $name подключена более чем в одном пресете/хосте одного класса"

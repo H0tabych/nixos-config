@@ -314,7 +314,7 @@ let n = config.flake.modules.nixos; in {
 
 **network:** `network-manager`, `dns-resolver`, `vpn-client` (корпоративные/штатные VPN), `tunnel-<реализация>` (слот), `tunnel-facts` (N: объявление `my.tunnel.*`), `tunnel-server-<реализация>` (N, опц. — декларативный выход, VPN_SUBSYSTEM 4.6), `killswitch` (все N).
 
-**desktop (слоты):** `session-<р>`, `display-manager-<р>`, `bar-<р>`, `notifier-<р>`, `launcher-<р>`, `lockscreen-<р>`, `idle-<р>`, `wallpaper-<р>`, `screenshot-<р>`, `clipboard-<р>`, `polkit-agent-<р>`, `osd-<р>`, `automount-agent-<р>`, `theme` (N+H: GTK/Qt/курсор/иконки, палитра для Nix-владеемых потребителей).
+**desktop (слоты):** `session-<р>`, `display-manager-<р>`, `bar-<р>`, `notifier-<р>`, `launcher-<р>`, `lockscreen-<р>`, `idle-<р>`, `wallpaper-<р>`, `screenshot-<р>`, `clipboard-<р>`, `polkit-agent-<р>`, `osd-<р>`, `automount-agent-<р>`, `bluetooth-manager-<р>`, `theme` (N+H: GTK/Qt/курсор/иконки, палитра для Nix-владеемых потребителей).
 
 **shell:** `shell-<р>` (N+H), `vcs-tools` (N: VCS нужна nix-фетчеру input'ов до логина и активации Home Manager — системная нужда по ARCH-11; системный пакет доступен каждому пользователю хоста), `env-manager` (N: автоактивация проектных окружений, слой совместимости для динамических бинарников), `terminal-<р>` (H), `file-manager-<р>` (H), `dotfiles-link` (N+H: раздел 8), `user-dirs` (H: стандартные каталоги XDG — Desktop/Documents/Downloads/…, имена латиницей).
 
@@ -748,6 +748,7 @@ let n = config.flake.modules.nixos; in {
 | `lockscreen` / `idle` / `wallpaper` | hyprlock / hypridle / hyprpaper |
 | `screenshot` / `clipboard` / `osd` / `polkit-agent` | grim + slurp + swappy / cliphist + wl-clipboard / swayosd / hyprpolkitagent |
 | `automount-agent` | udiskie |
+| `bluetooth-manager` | blueman |
 | `terminal` / `file-manager` | foot / yazi |
 | `shell` / `env-manager` | zsh (+ oh-my-zsh) / direnv + nix-direnv (+ nix-ld) |
 | `editor` | Neovim (lazy.nvim) |

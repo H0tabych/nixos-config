@@ -20,6 +20,7 @@ in
       n.idle-hypridle
       n.polkit-agent-hyprpolkitagent
       n.osd-swayosd
+      n.bluetooth-manager-blueman
       n.theme
     ];
   };
@@ -34,6 +35,7 @@ in
       hm.polkit-agent-hyprpolkitagent
       hm.osd-swayosd
       hm.automount-agent-udiskie
+      hm.bluetooth-manager-blueman
       hm.terminal-foot
       hm.file-manager-yazi
       hm.theme
