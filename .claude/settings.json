@@ -38,7 +38,8 @@
       "Read(~/.config/sops/age/**)",
       "Read(~/.ssh/**)",
       "Read(~/.gnupg/**)",
-      "Edit(./secrets/**)",
+      "Edit(./secrets/*.yaml)",
+      "Edit(./secrets/**/*.yaml)",
       "Edit(./.env)",
       "Edit(./.env.*)"
     ]
