@@ -10,10 +10,24 @@ in
   flake.modules.nixos.users =
     { config, lib, ... }:
     let
-      hostUsers = lib.getAttrs config.my.host.users outer.my.users;
+      # USER-2: хост выбирает подмножество реестра. Незарегистрированное имя
+      # давало сырое `attribute '<имя>' missing` из lib.getAttrs без указания на
+      # причину, поэтому список сверяется заранее.
+      unknownUsers = lib.subtractLists (lib.attrNames outer.my.users) config.my.host.users;
+      hostUsers = lib.getAttrs (lib.subtractLists unknownUsers config.my.host.users) outer.my.users;
       hm = outer.flake.modules.homeManager;
     in
     {
+      assertions = [
+        {
+          assertion = unknownUsers == [ ];
+          message =
+            "my.host.users содержит пользователей без записи в my.users (USER-1):"
+            + " ${lib.concatStringsSep ", " unknownUsers}."
+            + " Добавьте modules/users/<имя>.nix либо уберите имя из хоста.";
+        }
+      ];
+
       users.users = lib.mapAttrs (name: u: {
         isNormalUser = true;
         inherit (u) uid;

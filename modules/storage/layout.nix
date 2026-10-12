@@ -30,6 +30,11 @@
       boot.initrd.systemd.enable = true;
       boot.loader.systemd-boot.enable = true;
       boot.loader.efi.canTouchEfiVariables = true;
+      # STO-9: ограничение числа поколений в загрузчике (вторая половина правила,
+      # первая — nix.gc в base/nix-settings). ESP = 1 ГБ, поколение с initrd и
+      # ядром занимает ~100 МБ, поэтому 10 — с запасом. W5/PNR-3 это не нарушает:
+      # лимит действует на записи загрузчика, а не на сборку мусора в store.
+      boot.loader.systemd-boot.configurationLimit = 10;
 
       disko.devices.disk.main = {
         type = "disk";
