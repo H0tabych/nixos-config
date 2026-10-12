@@ -33,6 +33,7 @@ in
       hm.clipboard-cliphist
       hm.polkit-agent-hyprpolkitagent
       hm.osd-swayosd
+      hm.automount-agent-udiskie
       hm.terminal-foot
       hm.file-manager-yazi
       hm.theme

@@ -314,7 +314,7 @@ let n = config.flake.modules.nixos; in {
 
 **network:** `network-manager`, `dns-resolver`, `vpn-client` (корпоративные/штатные VPN), `tunnel-<реализация>` (слот), `tunnel-facts` (N: объявление `my.tunnel.*`), `tunnel-server-<реализация>` (N, опц. — декларативный выход, VPN_SUBSYSTEM 4.6), `killswitch` (все N).
 
-**desktop (слоты):** `session-<р>`, `display-manager-<р>`, `bar-<р>`, `notifier-<р>`, `launcher-<р>`, `lockscreen-<р>`, `idle-<р>`, `wallpaper-<р>`, `screenshot-<р>`, `clipboard-<р>`, `polkit-agent-<р>`, `osd-<р>`, `theme` (N+H: GTK/Qt/курсор/иконки, палитра для Nix-владеемых потребителей).
+**desktop (слоты):** `session-<р>`, `display-manager-<р>`, `bar-<р>`, `notifier-<р>`, `launcher-<р>`, `lockscreen-<р>`, `idle-<р>`, `wallpaper-<р>`, `screenshot-<р>`, `clipboard-<р>`, `polkit-agent-<р>`, `osd-<р>`, `automount-agent-<р>`, `theme` (N+H: GTK/Qt/курсор/иконки, палитра для Nix-владеемых потребителей).
 
 **shell:** `shell-<р>` (N+H), `vcs-tools` (H), `env-manager` (N: автоактивация проектных окружений, слой совместимости для динамических бинарников), `terminal-<р>` (H), `file-manager-<р>` (H), `dotfiles-link` (N+H: раздел 8), `user-dirs` (H: стандартные каталоги XDG — Desktop/Documents/Downloads/…, имена латиницей).
 
@@ -340,7 +340,7 @@ let n = config.flake.modules.nixos; in {
 **SLOT-1** Реализация слота — одна фича: владеет пакетом, юнитом (если демон), системной интеграцией; конфиг — в dotfiles.
 **SLOT-2** Не более одной активной реализации слота на пользователя (`session` — см. выше).
 **SLOT-3** Реализации взаимозаменяемы: замена затрагивает только фичу-реализацию, пресет и каталог dotfiles.
-**SLOT-4** Компоненты оболочки рабочего стола (`bar`, `notifier`, `launcher`, `lockscreen`, `idle`, `wallpaper`, `screenshot`, `clipboard`, `polkit-agent`, `osd`): (a) демон — user-юнит, привязанный к `graphical-session.target`; (b) значения хоста — из машинного слоя; (c) цвета — из палитры; (d) адаптеры композитора (рабочие столы, IPC, раскладка) вынесены в отдельные файлы конфигурации в dotfiles и подключаются штатным include.
+**SLOT-4** Компоненты оболочки рабочего стола (`bar`, `notifier`, `launcher`, `lockscreen`, `idle`, `wallpaper`, `screenshot`, `clipboard`, `polkit-agent`, `osd`, `automount-agent`): (a) демон — user-юнит, привязанный к `graphical-session.target`; (b) значения хоста — из машинного слоя; (c) цвета — из палитры; (d) адаптеры композитора (рабочие столы, IPC, раскладка) вынесены в отдельные файлы конфигурации в dotfiles и подключаются штатным include.
 
 ---
 
@@ -747,6 +747,7 @@ let n = config.flake.modules.nixos; in {
 | `bar` / `notifier` / `launcher` | Waybar / mako / rofi |
 | `lockscreen` / `idle` / `wallpaper` | hyprlock / hypridle / hyprpaper |
 | `screenshot` / `clipboard` / `osd` / `polkit-agent` | grim + slurp + swappy / cliphist + wl-clipboard / swayosd / hyprpolkitagent |
+| `automount-agent` | udiskie |
 | `terminal` / `file-manager` | foot / yazi |
 | `shell` / `env-manager` | zsh (+ oh-my-zsh) / direnv + nix-direnv (+ nix-ld) |
 | `editor` | Neovim (lazy.nvim) |
