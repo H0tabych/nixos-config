@@ -7,7 +7,7 @@
 Нормативные документы, разделы ищите по ID правила (`grep -n "<ID>" docs/architecture/*.md`):
 
 - [`architecture/ARCHITECTURE.md`](architecture/ARCHITECTURE.md) — нормативная архитектура, критерии приёмки A1–A18
-- [`architecture/STRUCTURE.md`](architecture/STRUCTURE.md) — структура репозитория, проверки C1–C11
+- [`architecture/STRUCTURE.md`](architecture/STRUCTURE.md) — структура репозитория, проверки C1–C12
 - [`architecture/VPN_SUBSYSTEM.md`](architecture/VPN_SUBSYSTEM.md) — туннель, DNS, kill switch
 - [`architecture/AI_SUBSYSTEM.md`](architecture/AI_SUBSYSTEM.md) — инференс, шлюз, агенты
 - [`architecture/ROADMAP.md`](architecture/ROADMAP.md) — дорожная карта; шаги `R<этап>.<n>`, Gate'ы `G<n>`

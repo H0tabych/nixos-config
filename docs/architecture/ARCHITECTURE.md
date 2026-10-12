@@ -316,9 +316,9 @@ let n = config.flake.modules.nixos; in {
 
 **desktop (слоты):** `session-<р>`, `display-manager-<р>`, `bar-<р>`, `notifier-<р>`, `launcher-<р>`, `lockscreen-<р>`, `idle-<р>`, `wallpaper-<р>`, `screenshot-<р>`, `clipboard-<р>`, `polkit-agent-<р>`, `osd-<р>`, `automount-agent-<р>`, `theme` (N+H: GTK/Qt/курсор/иконки, палитра для Nix-владеемых потребителей).
 
-**shell:** `shell-<р>` (N+H), `vcs-tools` (H), `env-manager` (N: автоактивация проектных окружений, слой совместимости для динамических бинарников), `terminal-<р>` (H), `file-manager-<р>` (H), `dotfiles-link` (N+H: раздел 8), `user-dirs` (H: стандартные каталоги XDG — Desktop/Documents/Downloads/…, имена латиницей).
+**shell:** `shell-<р>` (N+H), `vcs-tools` (N: VCS нужна nix-фетчеру input'ов до логина и активации Home Manager — системная нужда по ARCH-11; системный пакет доступен каждому пользователю хоста), `env-manager` (N: автоактивация проектных окружений, слой совместимости для динамических бинарников), `terminal-<р>` (H), `file-manager-<р>` (H), `dotfiles-link` (N+H: раздел 8), `user-dirs` (H: стандартные каталоги XDG — Desktop/Documents/Downloads/…, имена латиницей).
 
-**dev:** `editor-<р>` (N+H), `lsp-global` (H), `containers` (N+H), `databases` (H), `api-tools` (H, опц.).
+**dev:** `editor-<р>` (N: пакет и переменная редактора по умолчанию — в одной области видимости, иначе переменная ссылается на отсутствующий в PATH бинарник (DEV-9); глобальный редактор предусмотрен DEV-1), `lsp-global` (H), `containers` (N+H), `databases` (H), `api-tools` (H, опц.).
 
 **office / media / gaming / ai:** `office-suite`, `mail-calendar`, `documents`, `communication`, `print-scan` (опц.); `video-player`, `browser`, `torrent`; `game-platform`, `compat-layer`, `game-optimizer`, `overlay`; `compute-cache`, `inference-service-<р>` (слот), `container-gpu`, `agents-tools`; подсистема ML добавляет `ai-facts`, `llm-gateway`, `code-context` (AI_SUBSYSTEM 2.2).
 

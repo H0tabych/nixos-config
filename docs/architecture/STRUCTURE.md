@@ -17,7 +17,7 @@
 |---|---|---|
 | K1 | **Предсказуемость.** По названию задачи путь к файлу угадывается без поиска | Раздел 9: порядок вопросов даёт единственный ответ |
 | K2 | **Локальность изменений.** Типовое изменение затрагивает ≤ 3 существующих файла | Раздел 10: таблица «сценарий → файлы» |
-| K3 | **Проверяемость.** Нарушение структуры находит CI, а не ревью | Раздел 8: проверки C1…C11 |
+| K3 | **Проверяемость.** Нарушение структуры находит CI, а не ревью | Раздел 8: проверки C1…C12 |
 | K4 | **Малая единица.** Файл ≲ 150 строк, каталог ≤ 15 фич (ARCH-12) | STR-5, проверка C6 |
 | K5 | **Один факт — одно место** (ARCH-5) | Нет каталогов-свалок (STR-3), уникальные имена (STR-4) |
 | K6 | **Переносимость.** Данные, конфиги и железо отделены от логики | Разделы 4, 7; STR-10 |
@@ -300,7 +300,7 @@ tests/
 
 ### 5.2 `scripts/`
 
-**STR-11.** Скрипт допустим, если его вызывает `justfile`, CI или хук, и он решает ровно одну задачу. Логика сборки и конфигурации системы в скриптах недопустима — она в Nix. Первая строка — назначение и кто вызывает. Эталонный набор: `check-structure.sh`, `hibernate-offset.sh`, `new-feature.sh` (создаёт файл фичи из `modules/_templates/`).
+**STR-11.** Скрипт допустим, если его вызывает `justfile`, CI или хук, и он решает ровно одну задачу. Логика сборки и конфигурации системы в скриптах недопустима — она в Nix. Первая строка — назначение и кто вызывает. Эталонный набор: `check-structure.sh`, `check-lock.sh` (A16), `check-doc-ids.sh`, `check-secrets.sh`, `dotfiles-clone.sh`, `hibernate-offset.sh` (R5.1), `new-feature.sh` (создаёт файл фичи из `modules/_templates/`; R9.2).
 
 ### 5.3 CI
 
@@ -319,7 +319,7 @@ tests/
 | Рецепт | Назначение |
 |---|---|
 | `bootstrap <хост>` | Установка на чистую машину (18.9 Архитектуры) |
-| `check` | `fmt` + `flake check` + `check-structure` |
+| `check` | проверка формата (`nix fmt -- --ci`, файлы не правятся — OPS-2 требует именно проверки) + `flake check` (включает `check-structure`, C3 и `tests/*`) + `check-lock` (A16). Правит файлы отдельный рецепт `fmt` |
 | `build <хост>` / `test <хост>` / `boot <хост>` | Сборка и применение без/с активацией (OPS-3) |
 | `vm <хост>` | Виртуальная машина хоста (OPS-9) |
 | `update [input]` | Обновление lock-файла и `nvd diff` |
@@ -395,7 +395,7 @@ dotfiles/
 
 ## 8. Машинная проверка структуры
 
-Проверки реализуются в `modules/core/checks-structure.nix` и `scripts/check-structure.sh`; запускаются командой `just check` и в `check.yml`.
+Проверки реализуются в `modules/core/checks-structure.nix` (C3 — нужен доступ к `config.flake.modules.*`) и `scripts/check-structure.sh` (остальные); проверка lock-файла (A16) — `scripts/check-lock.sh`. Запускаются командой `just check` и в `check.yml`.
 
 | № | Правило | Проверка |
 |---|---|---|
@@ -408,8 +408,9 @@ dotfiles/
 | C7 | ARCH-3: нет импорта фич | `config.flake.modules` встречается только в `presets/`, `hosts/`, `base/users.nix`, `core/` |
 | C8 | STR-6: приватные части | Каждый `_<владелец>-…` существует рядом с `<владелец>.nix` и упомянут только в нём |
 | C9 | STR-10: секреты | Каждый файл в `secrets/` содержит блок `sops:`; значений в `secrets/README.md` нет |
-| C10 | FEAT-8, STR-7 | Каждая пара «фича + класс» входит ровно в один пресет-владелец или в хост; пресеты содержат только `imports` |
+| C10 | FEAT-8, STR-7 | Каждая пара «фича + класс» входит ровно в один пресет-владелец или в хост (ни ноль — неиспользуемая фича, ни больше одного); пресеты содержат только `imports`. Шаблоны `_template.nix` составами не считаются |
 | C11 | FEAT-7 | Слот из метаданных присутствует в каталоге Архитектуры |
+| C12 | DOT-14 | В `modules/` нет генераторов конфигов для приложений реестра dotfiles (`programs/services.<app>.{settings,extraConfig,…}`, `xdg.configFile.<app>`, `home.file.".config/<app>"`). Разрешены `enable`, `package` и `programs.zsh.shellInit` (DOT-12). Вторая половина DOT-14 — «нет `/nix/store` в dotfiles» — проверяется в CI репозитория dotfiles |
 
 ```sh
 # Пример: C2 и C9 (scripts/check-structure.sh)
@@ -511,7 +512,7 @@ unenc=$(grep -L '^sops:' secrets/*.yaml secrets/*/*.yaml 2>/dev/null)
 | ID | Решение | Затрагивает |
 |---|---|---|
 | ADR-31 | **Структура репозитория — этот документ.** Схема раздела 4 Архитектуры становится кратким обзором со ссылкой на STRUCTURE.md; добавлены: `assets/`, `tests/`, `scripts/`, `CLAUDE.md`, `.claude/`, `docs/architecture/` (в том числе `ROADMAP.md`), `docs/hosts/`, `modules/_templates/`; правило уникальных имён файлов (STR-4a); приватные части `_` могут подключаться владельцем (уточнение ARCH-2); имена реализаций слотов по A.3 (STR-4b) | Разделы 4 и 6, ARCH-2, FEAT-1, OPS-8 |
-| ADR-32 | **`user-base` — HM-пресет базового окружения пользователя** (`dotfiles-link`, оболочка, `vcs-tools`, `env-manager`), подключаемый фичей `users` **каждому** пользователю независимо от capability | USER-3 |
+| ADR-32 | **`user-base` — HM-пресет базового окружения пользователя**, подключаемый фичей `users` **каждому** пользователю независимо от capability. Состав — HM-классы фич этого базиса: `dotfiles-link`, `user-dirs`. Оболочка, VCS и `env-manager` дают тот же результат через nixos-класс в пресете `base` (системные пакеты доступны каждому пользователю хоста), поэтому HM-дубля у них нет (ARCH-5) | USER-3 |
 
 В рамках ADR-31 записи каталога раздела 6, перечисленные в A.3 как «слот → реализация» (`containers`, `env-manager`, `office-suite`, `video-player`, …), получают суффикс `-<р>`; capability `containers` остаётся именем пресета.
 
@@ -573,7 +574,8 @@ nixos-config/
 ├── assets/                   README.md  sddm/
 ├── templates/                python/  rust/  cpp/  sql/  ml-cuda/
 ├── tests/                    killswitch-fail-fast.nix  agent-sandbox.nix  tunnel-config.nix  fixtures/
-├── scripts/                  check-structure.sh  hibernate-offset.sh  new-feature.sh
+├── scripts/                  check-structure.sh  check-lock.sh  check-doc-ids.sh
+│                            check-secrets.sh  dotfiles-clone.sh  hibernate-offset.sh  new-feature.sh
 └── docs/
     ├── README.md  runbook.md  runbook/{tunnel,ai}.md
     ├── architecture/         ARCHITECTURE.md  STRUCTURE.md  AI_SUBSYSTEM.md  VPN_SUBSYSTEM.md  ROADMAP.md
@@ -598,9 +600,9 @@ dotfiles/                     (отдельный репозиторий)
 |---|---|---|---|
 | `base` | класс хоста | nix-settings, locale-keyboard, users, hm, fonts, host-facts, sops, ssh, firewall, hardening, network-manager, shell-zsh, env-manager-direnv, dotfiles-link | — |
 | `laptop` | класс хоста | power, sleep, layout, swap, maintenance, firmware, audio, bluetooth, automount | — |
-| `user-base` | базис пользователя (ADR-32) | — | dotfiles-link, shell-zsh, vcs-tools, env-manager-direnv |
+| `user-base` | базис пользователя (ADR-32) | — | dotfiles-link, user-dirs |
 | `desktop` | capability | session-hyprland, display-manager-sddm, theme | bar-waybar, notifier-mako, launcher-rofi, lockscreen-hyprlock, idle-hypridle, wallpaper-hyprpaper, screenshot-grim, clipboard-cliphist, polkit-agent-hyprpolkitagent, osd-swayosd, terminal-foot, file-manager-yazi, theme |
-| `development` | capability | editor-neovim | editor-neovim, lsp-global, databases, [api-tools] |
+| `development` | capability | editor-neovim | lsp-global, databases, [api-tools] |
 | `containers` | capability | containers-docker | containers-docker |
 | `office` | capability | — | office-suite-libreoffice, mail-calendar-thunderbird, documents-zathura, communication-telegram |
 | `media` | capability | — | video-player-mpv, browser-firefox, torrent-transmission |

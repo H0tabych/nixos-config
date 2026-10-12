@@ -9,5 +9,5 @@ VPN_SUBSYSTEM.md P.6/P.7).
 
 ## Темы
 
-- [`runbook/tunnel.md`](runbook/tunnel.md) — туннель: upstream для LLM
+- [`runbook/tunnel.md`](runbook/tunnel.md) — туннель: реестр отступлений (VPN-CLI-3), upstream для LLM
   (VPN-LLM-1…6), процедура изменения конфига выхода (VPN-SRV-7)
