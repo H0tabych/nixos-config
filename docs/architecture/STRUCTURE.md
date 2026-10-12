@@ -545,14 +545,15 @@ nixos-config/
 │   ├── security/             sops  ssh  hardening  firewall
 │   ├── network/              network-manager  dns-resolver  vpn-client
 │   │                         tunnel-facts  tunnel-xray  [tunnel-server-xray]  killswitch
-│   │                         _tunnel-policy.nix  _killswitch-rules.nft
+│   │                         _tunnel-xray-policy.nix  _killswitch-rules.nft
 │   ├── desktop/              session-hyprland  display-manager-sddm  bar-waybar
 │   │                         notifier-mako  launcher-rofi  lockscreen-hyprlock
 │   │                         idle-hypridle  wallpaper-hyprpaper  screenshot-grim
 │   │                         clipboard-cliphist  polkit-agent-hyprpolkitagent
-│   │                         osd-swayosd  theme
-│   ├── shell/                shell-zsh  vcs-tools  env-manager-direnv
+│   │                         osd-swayosd  automount-agent-udiskie  theme
+│   ├── shell/                shell-zsh  vcs-tools  env-manager-direnv  user-dirs
 │   │                         terminal-foot  file-manager-yazi  dotfiles-link
+│   │                         _dotfiles-link-machine.nix
 │   ├── dev/                  editor-neovim  lsp-global  containers-docker
 │   │                         databases  [api-tools]
 │   ├── office/               office-suite-libreoffice  mail-calendar-thunderbird
@@ -598,17 +599,24 @@ dotfiles/                     (отдельный репозиторий)
 
 | Пресет | Вид | nixos (N) | homeManager (H) |
 |---|---|---|---|
-| `base` | класс хоста | nix-settings, locale-keyboard, users, hm, fonts, host-facts, sops, ssh, firewall, hardening, network-manager, shell-zsh, env-manager-direnv, dotfiles-link | — |
+| `base` | класс хоста | nix-settings, locale-keyboard, users, hm, fonts, host-facts, sops, ssh, firewall, hardening, network-manager, shell-zsh, env-manager-direnv, vcs-tools, dotfiles-link | — |
 | `laptop` | класс хоста | power, sleep, layout, swap, maintenance, firmware, audio, bluetooth, automount | — |
 | `user-base` | базис пользователя (ADR-32) | — | dotfiles-link, user-dirs |
-| `desktop` | capability | session-hyprland, display-manager-sddm, theme | bar-waybar, notifier-mako, launcher-rofi, lockscreen-hyprlock, idle-hypridle, wallpaper-hyprpaper, screenshot-grim, clipboard-cliphist, polkit-agent-hyprpolkitagent, osd-swayosd, terminal-foot, file-manager-yazi, theme |
+| `desktop` | capability | session-hyprland, display-manager-sddm, bar-waybar, lockscreen-hyprlock, idle-hypridle, polkit-agent-hyprpolkitagent, osd-swayosd, theme | notifier-mako, launcher-rofi, wallpaper-hyprpaper, screenshot-grim, clipboard-cliphist, polkit-agent-hyprpolkitagent, osd-swayosd, automount-agent-udiskie, terminal-foot, file-manager-yazi, theme |
 | `development` | capability | editor-neovim | lsp-global, databases, [api-tools] |
 | `containers` | capability | containers-docker | containers-docker |
 | `office` | capability | — | office-suite-libreoffice, mail-calendar-thunderbird, documents-zathura, communication-telegram |
-| `media` | capability | — | video-player-mpv, browser-firefox, torrent-transmission |
+| `media` | capability | browser-firefox (APP-3: политики браузера — на уровне NixOS) | video-player-mpv, torrent-transmission |
 | `gaming` | capability | game-platform-steam, compat-layer-proton-ge, game-optimizer-gamemode, overlay-mangohud | overlay-mangohud |
 | `ml` | capability | ai-facts, compute-cache, inference-service-ollama, container-gpu-nvidia, llm-gateway | llm-gateway, agents-tools, code-context |
 | `tunnel` | среда хоста | tunnel-facts, tunnel-xray, killswitch, dns-resolver | — |
+
+Класс слота рабочего стола выбирается так: если NixOS-модуль даёт только
+`enable`/`package` (и, при необходимости, PAM или user-юнит-шаблон), а HM-модуль
+того же приложения генерирует конфиг, берётся **N** — иначе нарушается DOT-3 для
+приложения реестра. Так получились `bar-waybar`, `lockscreen-hyprlock`,
+`idle-hypridle` (N), `osd-swayosd` и `polkit-agent-hyprpolkitagent` (N+H:
+системная часть и пользовательский демон). Причина записана в самом файле фичи.
 
 Фичи `gpu-integrated`, `gpu-discrete`, `gpu-hybrid` подключаются из хоста (аппаратный состав, HOST-3). Зависимость `container-gpu-nvidia` от `containers-docker` выражена `assertions` в файле фичи, а не импортом: хост обязан включать пресеты `ml` и `containers` одновременно.
 
