@@ -1,5 +1,5 @@
 # Каркас: checks-structure · Домен: core
-# Проверки структуры раздела 8 STRUCTURE.md. C1, C2, C4–C11 — в scripts/check-structure.sh
+# Проверки структуры раздела 8 STRUCTURE.md. C1, C2, C4–C12 — в scripts/check-structure.sh
 # (текстовые/find-проверки). C3 — здесь: нужен доступ к config.flake.modules.*, grep не годится.
 {
   self,
