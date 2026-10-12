@@ -1,7 +1,8 @@
 # Фича: sgms-laptop · Слот: — · Домен: hosts · Классы: N · Для: sgm
 # Контракт: ARCH-4, HOST-1, STR-8. Композиция хоста + факты my.host.* (без пакетов и сервисов).
-# Зависимости: presets base/laptop/desktop/development/media/tunnel; gpu-* подключаются прямо
-# из хоста (HOST-3); machines/sgms-laptop/hardware.nix — исключение STR-9.
+# Зависимости: presets base/laptop/desktop/development/media/tunnel; gpu-*, vpn-client
+# подключаются прямо из хоста (HOST-3, персональная фича, не для класса laptop);
+# machines/sgms-laptop/hardware.nix — исключение STR-9.
 { config, inputs, ... }:
 let
   n = config.flake.modules.nixos;
@@ -23,6 +24,7 @@ in
       n.gpu-discrete
       n.gpu-hybrid
       n.tunnel
+      n.vpn-client
       ../../machines/sgms-laptop/hardware.nix
     ];
 

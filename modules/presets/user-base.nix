@@ -13,6 +13,7 @@ in
     imports = [
       hm.dotfiles-link
       hm.vcs-tools
+      hm.user-dirs
     ];
   };
 }

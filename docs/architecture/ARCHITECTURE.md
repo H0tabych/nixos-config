@@ -316,7 +316,7 @@ let n = config.flake.modules.nixos; in {
 
 **desktop (слоты):** `session-<р>`, `display-manager-<р>`, `bar-<р>`, `notifier-<р>`, `launcher-<р>`, `lockscreen-<р>`, `idle-<р>`, `wallpaper-<р>`, `screenshot-<р>`, `clipboard-<р>`, `polkit-agent-<р>`, `osd-<р>`, `theme` (N+H: GTK/Qt/курсор/иконки, палитра для Nix-владеемых потребителей).
 
-**shell:** `shell-<р>` (N+H), `vcs-tools` (H), `env-manager` (N: автоактивация проектных окружений, слой совместимости для динамических бинарников), `terminal-<р>` (H), `file-manager-<р>` (H), `dotfiles-link` (N+H: раздел 8).
+**shell:** `shell-<р>` (N+H), `vcs-tools` (H), `env-manager` (N: автоактивация проектных окружений, слой совместимости для динамических бинарников), `terminal-<р>` (H), `file-manager-<р>` (H), `dotfiles-link` (N+H: раздел 8), `user-dirs` (H: стандартные каталоги XDG — Desktop/Documents/Downloads/…, имена латиницей).
 
 **dev:** `editor-<р>` (N+H), `lsp-global` (H), `containers` (N+H), `databases` (H), `api-tools` (H, опц.).
 
