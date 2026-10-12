@@ -1,6 +1,5 @@
 # Фича: base · Слот: — · Домен: presets · Классы: N · Для: всех хостов класса base
-# Контракт: STR-7 (пресет — только imports). hardening, shell-zsh,
-# env-manager-direnv, dotfiles-link добавятся по мере готовности (R9.1, R4.2, R4.4).
+# Контракт: STR-7 (пресет — только imports). hardening добавится в R9.1.
 # Зависимости: —
 { config, ... }:
 let
@@ -19,6 +18,9 @@ in
       n.ssh
       n.firewall
       n.network-manager
+      n.dotfiles-link
+      n.shell-zsh
+      n.env-manager-direnv
     ];
   };
 }

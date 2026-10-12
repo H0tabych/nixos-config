@@ -1,6 +1,6 @@
 # Фича: development · Слот: — · Домен: presets · Классы: N+H · Для: пользователей с capability development
-# Контракт: STR-7, USER-4. Минимальный состав — редактор (R2.6); lsp-global,
-# databases, api-tools добавятся позже.
+# Контракт: STR-7, USER-4. Редактор + минимальный lsp-global (R4.4); полный
+# lsp-global, databases, api-tools добавятся позже (R6.1+).
 # Зависимости: —
 { config, ... }:
 let
@@ -12,6 +12,9 @@ in
     imports = [ n.editor-neovim ];
   };
   flake.modules.homeManager.development = {
-    imports = [ hm.editor-neovim ];
+    imports = [
+      hm.editor-neovim
+      hm.lsp-global
+    ];
   };
 }

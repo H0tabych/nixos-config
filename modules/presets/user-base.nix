@@ -1,10 +1,18 @@
 # Фича: user-base · Слот: — · Домен: presets · Классы: H · Для: всех пользователей
 # Контракт: STR-7, ADR-32 — подключается фичей users каждому пользователю
-# независимо от capability. dotfiles-link, shell-zsh, vcs-tools,
-# env-manager-direnv появятся в R4.2/R4.4; до тех пор состав пуст.
+# независимо от capability. shell-zsh не имеет homeManager-класса (HM programs.zsh
+# не используется, A.6) — оболочка пользователя подключается через N-сторону в
+# пресете base.
 # Зависимости: —
-_: {
+{ config, ... }:
+let
+  hm = config.flake.modules.homeManager;
+in
+{
   flake.modules.homeManager.user-base = {
-    imports = [ ];
+    imports = [
+      hm.dotfiles-link
+      hm.vcs-tools
+    ];
   };
 }
