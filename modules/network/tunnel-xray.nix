@@ -124,16 +124,19 @@ in
         restartUnits = [ "tunnel-xray.service" ];
       };
 
-      environment.sessionVariables = lib.mkIf (cfg.mode == "m1") {
-        http_proxy = httpProxyUrl;
-        HTTP_PROXY = httpProxyUrl;
-        https_proxy = httpProxyUrl;
-        HTTPS_PROXY = httpProxyUrl;
-        all_proxy = socksProxyUrl;
-        ALL_PROXY = socksProxyUrl;
-        no_proxy = noProxyStr;
-        NO_PROXY = noProxyStr;
-      };
+      # Единственный механизм доставки в графическую сессию — env-файл менеджера
+      # сессий (NET-10, DOT-7); environment.sessionVariables сюда не используется,
+      # чтобы не завести второй механизм (R4.3).
+      environment.etc."xdg/uwsm/env".text = lib.mkIf (cfg.mode == "m1") ''
+        export http_proxy=${httpProxyUrl}
+        export HTTP_PROXY=${httpProxyUrl}
+        export https_proxy=${httpProxyUrl}
+        export HTTPS_PROXY=${httpProxyUrl}
+        export all_proxy=${socksProxyUrl}
+        export ALL_PROXY=${socksProxyUrl}
+        export no_proxy=${noProxyStr}
+        export NO_PROXY=${noProxyStr}
+      '';
 
       systemd.services.tunnel-xray = {
         description = "Клиент туннеля (VLESS + Reality, M1)";
