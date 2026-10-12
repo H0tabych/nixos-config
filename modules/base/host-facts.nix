@@ -82,6 +82,12 @@ _: {
           description = "Встроенные устройства ввода (раздел 7.1 docs/hosts).";
         };
 
+        keyboardLayout = lib.mkOption {
+          type = lib.types.str;
+          default = "us";
+          description = "Раскладка клавиатуры рабочего стола, формат xkb (DESK-7) — единый источник для X11 и машинного слоя.";
+        };
+
         outputs = lib.mkOption {
           type = lib.types.listOf (
             lib.types.submodule {

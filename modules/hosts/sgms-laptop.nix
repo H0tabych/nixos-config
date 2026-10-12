@@ -52,6 +52,8 @@ in
         "Asus WMI hotkeys"
       ];
 
+      keyboardLayout = "us,ru";
+
       outputs = [
         {
           name = "internal";

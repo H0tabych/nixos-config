@@ -136,10 +136,14 @@ if [ -d modules/presets ] || [ -d modules/hosts ]; then
     # Ищем обращение к фиче как к модулю (n.<имя> / hm.<имя>), а не любое
     # вхождение слова — иначе опции вида my.host.users ложно совпадают с
     # фичей users (STR-9: алиасы n/hm — единственный способ сослаться на
-    # config.flake.modules.<класс> в presets/hosts).
-    count=$(grep -rlE "\\b(n|hm)\\.$name\\b" modules/presets modules/hosts --include='*.nix' 2>/dev/null | wc -l || true)
-    if [ "$count" -gt 1 ]; then
-      err "C10: фича $name подключена более чем в одном пресете/хосте"
+    # config.flake.modules.<класс> в presets/hosts). n и hm — разные классы
+    # одной фичи (FEAT-8: пара «фича+класс» — ровно один владелец), поэтому
+    # считаем отдельно: N+H-фича законно подключается n.<имя> в одном пресете
+    # и hm.<имя> в другом (например, dotfiles-link — base и user-base).
+    n_count=$(grep -rlE "\\bn\\.$name\\b" modules/presets modules/hosts --include='*.nix' 2>/dev/null | wc -l || true)
+    hm_count=$(grep -rlE "\\bhm\\.$name\\b" modules/presets modules/hosts --include='*.nix' 2>/dev/null | wc -l || true)
+    if [ "$n_count" -gt 1 ] || [ "$hm_count" -gt 1 ]; then
+      err "C10: фича $name подключена более чем в одном пресете/хосте одного класса"
       c10_fail=1
     fi
   done < <(find modules -mindepth 2 -maxdepth 2 -name '*.nix' \
