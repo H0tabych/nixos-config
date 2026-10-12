@@ -10,7 +10,12 @@
 # не подтянутый nix flake update, а не про падение активации).
 # Зависимости: host-facts (my.host.{outputs,battery,gpu,keyboardLayout,users}),
 # core/options (my.users.<имя>.dotfiles.source) — только чтение значений (ARCH-3).
-{ config, inputs, ... }:
+{
+  config,
+  inputs,
+  lib,
+  ...
+}:
 let
   outer = config;
 
@@ -45,6 +50,12 @@ let
   );
 in
 {
+  # Для `just dotfiles-clone` (R4.6): путь нужен вне Nix-сборки, поэтому
+  # читается через `nix eval`, а не дублируется в скрипте (STR-11).
+  flake.dotfilesClonePaths = lib.filterAttrs (_: v: v != null) (
+    builtins.mapAttrs (_: u: u.dotfiles.source) outer.my.users
+  );
+
   flake.modules.nixos.dotfiles-link =
     {
       config,

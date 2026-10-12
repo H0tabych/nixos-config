@@ -7,6 +7,7 @@ _: {
       devShells.default = pkgs.mkShellNoCC {
         packages = [
           pkgs.just
+          pkgs.git
           pkgs.sops
           pkgs.age
           pkgs.nvd

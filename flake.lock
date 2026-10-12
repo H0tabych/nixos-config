@@ -23,17 +23,17 @@
     "dotfiles": {
       "flake": false,
       "locked": {
-        "lastModified": 1791384837,
-        "narHash": "sha256-NcepYIBLo/k+u6YguWEw+3bJ3uUotkl+aDlfVA9m/6w=",
-        "owner": "H0tabych",
-        "repo": ".dotfiles",
-        "rev": "3862fd539d9f5b4c26b9a24aac5a2f5d9c6d56ee",
-        "type": "github"
+        "lastModified": 1791763975,
+        "narHash": "sha256-hywH62lSL08q0Ae9//3Itr2EhuRPAj0xjkIrF+sgj/Y=",
+        "ref": "refs/heads/main",
+        "rev": "a49c82f1e5d54593dc19b914f1a2856989b43b0c",
+        "revCount": 2,
+        "type": "git",
+        "url": "ssh://git@github.com/H0tabych/.dotfiles.git"
       },
       "original": {
-        "owner": "H0tabych",
-        "repo": ".dotfiles",
-        "type": "github"
+        "type": "git",
+        "url": "ssh://git@github.com/H0tabych/.dotfiles.git"
       }
     },
     "flake-parts": {

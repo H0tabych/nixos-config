@@ -15,7 +15,7 @@ _: {
       "gaming"
       "ml"
     ];
-    # Клонирование рабочей копии — R4.6 (DOT-4); до того симлинки не создаются.
-    dotfiles.source = null;
+    # Рабочая копия dotfiles (R4.6, DOT-4); включает симлинки ~/.config/<app>.
+    dotfiles.source = "/home/sgm/.dotfiles";
   };
 }

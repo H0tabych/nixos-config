@@ -31,10 +31,11 @@ update input="":
     nixos-rebuild build --flake .#$(hostname)
     nvd diff /run/current-system result
 
-# TODO(DOT-4, Этап 4): первое клонирование dotfiles ещё не специфицировано
+# R4.6 (DOT-4): первое клонирование dotfiles для текущего пользователя.
 dotfiles-clone:
-    @echo "dotfiles-clone: см. docs/architecture/ARCHITECTURE.md DOT-4 — ещё не реализовано"
-    @exit 1
+    scripts/dotfiles-clone.sh \
+        "$(nix eval --impure --raw --expr 'let l = builtins.fromJSON (builtins.readFile ./flake.lock); o = l.nodes.dotfiles.original; in "https://github.com/${o.owner}/${o.repo}.git"')" \
+        "$(nix eval --raw .#dotfilesClonePaths.$(whoami))"
 
 add-host name:
     scripts/new-feature.sh host {{ name }}

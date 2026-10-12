@@ -29,7 +29,9 @@
     };
 
     dotfiles = {
-      url = "github:H0tabych/.dotfiles";
+      # git+ssh, а не github: — репозиторий приватный, а Tarball API github:
+      # не умеет использовать SSH-ключ (только access-tokens в nix.conf).
+      url = "git+ssh://git@github.com/H0tabych/.dotfiles.git";
       flake = false;
     };
   };
