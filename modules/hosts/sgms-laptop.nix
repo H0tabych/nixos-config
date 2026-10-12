@@ -59,6 +59,9 @@ in
       outputs = [
         {
           name = "internal";
+          # Подтверждено логом waybar на хосте (2026-10-12): "Bar configured ... for
+          # output: eDP-1" — встроенная панель.
+          connector = "eDP-1";
           width = 1920;
           height = 1080;
           refreshRate = 144;

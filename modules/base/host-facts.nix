@@ -96,6 +96,11 @@ _: {
                   type = lib.types.str;
                   description = "Метка вывода.";
                 };
+                connector = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  description = "Имя коннектора компоситора (напр. eDP-1), подтверждённое на хосте. null — коннектор не подтверждён, правило монитора не привязывается к конкретному выходу.";
+                };
                 width = lib.mkOption { type = lib.types.ints.positive; };
                 height = lib.mkOption { type = lib.types.ints.positive; };
                 refreshRate = lib.mkOption { type = lib.types.ints.positive; };

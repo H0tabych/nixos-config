@@ -66,13 +66,17 @@ in
     let
       host = config.my.host;
 
+      # Именованная строка — только для выходов с подтверждённым connector (DESK-8);
+      # завершающий wildcard — безопасный fallback для любых остальных физических
+      # выходов (A14: не навязывать им режим неподтверждённого/внутреннего монитора).
       monitorLines =
-        if host.outputs == [ ] then
-          "monitor=,preferred,auto,1\n"
-        else
-          lib.concatMapStrings (
-            o: "monitor=,${toString o.width}x${toString o.height}@${toString o.refreshRate},auto,1\n"
-          ) host.outputs;
+        lib.concatMapStrings (
+          o:
+          "monitor=${
+            if o.connector == null then "" else o.connector
+          },${toString o.width}x${toString o.height}@${toString o.refreshRate},auto,1\n"
+        ) host.outputs
+        + "monitor=,preferred,auto,1\n";
 
       machineFiles = {
         "hypr-monitors.conf" = ''
