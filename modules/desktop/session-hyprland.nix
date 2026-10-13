@@ -46,6 +46,12 @@ _: {
       # start-hyprland. This is highly advised against" при каждом запуске
       # (подтверждено в журнале сессии) и не перезапускается при аварийном
       # завершении.
+      #
+      # -D Hyprland -e: без них uwsm берёт XDG_CURRENT_DESKTOP из имени
+      # команды — получилось бы "start-hyprland" вместо "Hyprland" (видно в
+      # журнале: "Initial Desktop Names: start-hyprland"), и порталы/темы,
+      # ищущие именно "Hyprland", перестали бы его находить. -D задаёт верное
+      # имя, -e не даёт его смешать с выведенным из команды.
       uwsmSession = pkgs.writeTextFile {
         name = "hyprland-uwsm-session";
         destination = "/share/wayland-sessions/hyprland-uwsm.desktop";
@@ -53,7 +59,7 @@ _: {
           [Desktop Entry]
           Name=Hyprland (UWSM)
           Comment=Hyprland, запущенный через UWSM (DESK-2)
-          Exec=${lib.getExe config.programs.uwsm.package} start -F -- /run/current-system/sw/bin/start-hyprland
+          Exec=${lib.getExe config.programs.uwsm.package} start -D Hyprland -e -F -- /run/current-system/sw/bin/start-hyprland
           Type=Application
         '';
         derivationArgs.passthru.providedSessions = [ "hyprland-uwsm" ];
