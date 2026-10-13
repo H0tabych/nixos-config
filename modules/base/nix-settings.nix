@@ -31,10 +31,19 @@
         auto-optimise-store = true;
       };
 
+      # STO-9, первая половина: GC по расписанию. options намеренно НЕ задаются —
+      # до PNR-3 поколения не удаляются (W5, R5.3). `--delete-older-than` по
+      # man nix-collect-garbage(1) «deletes all generations of profiles older
+      # than the specified amount» и эквивалентен nix-env --delete-generations,
+      # то есть снёс бы и поколения системы — единственный способ откатиться
+      # (OPS-5, A11). Без options команда вырождается в nix-store --gc: удаляет
+      # только недостижимые пути, поколения остаются.
+      # Освобождается меньше места — это принятая плата; порог тревоги по
+      # свободному месту и бюджет ёмкости ведутся в docs/runbook.md (STO-11).
+      # Вторая половина STO-9 — лимит записей загрузчика — в storage/layout.
       nix.gc = {
         automatic = true;
         dates = "weekly";
-        options = "--delete-older-than 30d";
       };
 
       nixpkgs.config.allowUnfree = true;

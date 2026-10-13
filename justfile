@@ -61,11 +61,11 @@ new-feature domain name:
     @echo "Скопируйте modules/_templates/feature.nix → modules/{{ domain }}/{{ name }}.nix по чек-листу 18.1."
     @exit 1
 
-# TODO(R5.1): scripts/hibernate-offset.sh появится вместе с фичей storage/swap —
-# смещение считается по уже созданному swap-файлу (STO-5).
-hibernate-offset:
-    @echo "hibernate-offset: scripts/hibernate-offset.sh не реализован (ROADMAP R5.1, STO-5)"
-    @exit 1
+# Смещение swap-файла для my.host.resume.offset (STO-5). Значение печатается,
+# в репозиторий его вписывает человек (W10). Аргумент — путь к файлу, если
+# автоопределение по `swapon --show` не подходит.
+hibernate-offset file="":
+    bash scripts/hibernate-offset.sh {{ file }}
 
 sops-edit file:
     sops {{ file }}

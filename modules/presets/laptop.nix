@@ -1,5 +1,5 @@
 # Фича: laptop · Слот: — · Домен: presets · Классы: N · Для: хостов класса laptop
-# Контракт: STR-7 (пресет — только imports). swap, maintenance добавятся в R5.1/R5.2.
+# Контракт: STR-7 (пресет — только imports).
 # Зависимости: —
 { config, ... }:
 let
@@ -15,6 +15,9 @@ in
       n.bluetooth
       n.automount
       n.layout
+      n.swap
+      n.maintenance
+      n.backup
     ];
   };
 }

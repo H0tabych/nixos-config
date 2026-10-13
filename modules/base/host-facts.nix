@@ -121,6 +121,14 @@ _: {
           description = "Устройство диска для декларативной разметки (STO-1).";
         };
 
+        # Размер swap-файла — аппаратное различие (зависит от объёма RAM),
+        # поэтому факт хоста, а не константа в фиче (HOST-3, STO-4).
+        swap.sizeMiB = lib.mkOption {
+          type = lib.types.nullOr lib.types.int;
+          default = null;
+          description = "Размер swap-файла в МиБ, ≥ объёма RAM (STO-4).";
+        };
+
         resume.offset = lib.mkOption {
           type = lib.types.nullOr lib.types.int;
           default = null;
