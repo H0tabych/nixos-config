@@ -18,8 +18,15 @@
 # принадлежат tunnel-facts; здесь только доставка (ARCH-3 — через config.my.*).
 # Чтение my.tunnel защищено проверкой наличия: пресет desktop должен собираться
 # и на хосте без пресета tunnel.
+# Список устройств композитора (AQ_DRM_DEVICES, DESK-5, A5, R5.7) — тоже здесь:
+# переменная специфична для aquamarine/Hyprland, поэтому её владелец — фича
+# композитора, а не hardware/gpu-hybrid (тот владеет стабильными симлинками
+# устройств). Так замена реализации слота остаётся правкой одной фичи (SLOT-3).
+# Доставка — дропин uwsm/env.d/* (man uwsm(1)), чтобы не делить владение
+# uwsm/env с прокси-переменными (ARCH-1); тексты — в приватной части (STR-6).
 # Зависимости: display-manager (сессия должна быть предложена менеджером входа);
-# tunnel-facts (my.tunnel.*, опционально).
+# tunnel-facts (my.tunnel.*, опционально); host-facts (my.host.gpu.*BusId) и
+# gpu-hybrid (симлинки /dev/dri/by-host/*) — только чтение фактов (ARCH-3).
 _: {
   flake.modules.nixos.session-hyprland =
     {
@@ -46,6 +53,21 @@ _: {
         derivationArgs.passthru.providedSessions = [ "hyprland-uwsm" ];
       };
 
+      # DESK-5, A5: список устройств композитора (AQ_DRM_DEVICES) динамический —
+      # тексты скрипта, дропина и udev-правила вынесены в приватную часть (STR-6).
+      # Механизм имеет смысл только при гибридной графике; на хосте с одной GPU
+      # список не навязывается и композитор перечисляет устройства сам (откат
+      # R5.7 — ровно это состояние). Пресет desktop должен собираться и там,
+      # поэтому проверка факта, как и с my.tunnel ниже.
+      hybridGraphics =
+        config.my.host.gpu.integratedBusId != null && config.my.host.gpu.discreteBusId != null;
+
+      compositorDevices =
+        (import ./_session-hyprland-devices.nix { inherit lib pkgs; }).mkCompositorDevices
+          {
+            host = config.my.host;
+          };
+
       tunnel = config.my.tunnel;
       httpProxyUrl = "http://${tunnel.local.http.address}:${toString tunnel.local.http.port}";
       socksProxyUrl = "socks5h://${tunnel.local.socks.address}:${toString tunnel.local.socks.port}";
@@ -60,15 +82,33 @@ _: {
 
       services.displayManager.sessionPackages = lib.mkForce [ uwsmSession ];
 
-      environment.etc."xdg/uwsm/env".text = lib.mkIf proxyMode ''
-        export http_proxy=${httpProxyUrl}
-        export HTTP_PROXY=${httpProxyUrl}
-        export https_proxy=${httpProxyUrl}
-        export HTTPS_PROXY=${httpProxyUrl}
-        export all_proxy=${socksProxyUrl}
-        export ALL_PROXY=${socksProxyUrl}
-        export no_proxy=${noProxyStr}
-        export NO_PROXY=${noProxyStr}
-      '';
+      # DESK-5: список устройств композитора. Дропин uwsm/env.d/* — отдельный
+      # файл, поэтому владение uwsm/env (прокси ниже) не делится (ARCH-1).
+      systemd.services = lib.mkIf hybridGraphics {
+        compositor-devices = compositorDevices.service;
+      };
+      services.udev.extraRules = lib.mkIf hybridGraphics compositorDevices.udevRules;
+
+      # mkIf — на записи целиком, а не на её .text: запись без text и без source
+      # модуль etc считает ошибкой, а не пропуском. Для прокси это важно с R5.4:
+      # в режиме m2 переменные снимаются, и `.text = mkIf proxyMode …` оставил бы
+      # объявленную запись uwsm/env без содержимого.
+      environment.etc = lib.mkMerge [
+        (lib.mkIf hybridGraphics {
+          "xdg/uwsm/env.d/10-compositor-devices".text = compositorDevices.envDropIn;
+        })
+        (lib.mkIf proxyMode {
+          "xdg/uwsm/env".text = ''
+            export http_proxy=${httpProxyUrl}
+            export HTTP_PROXY=${httpProxyUrl}
+            export https_proxy=${httpProxyUrl}
+            export HTTPS_PROXY=${httpProxyUrl}
+            export all_proxy=${socksProxyUrl}
+            export ALL_PROXY=${socksProxyUrl}
+            export no_proxy=${noProxyStr}
+            export NO_PROXY=${noProxyStr}
+          '';
+        })
+      ];
     };
 }
