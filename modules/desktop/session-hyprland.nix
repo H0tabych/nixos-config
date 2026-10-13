@@ -40,6 +40,12 @@ _: {
       # services.displayManager.sessionPackages, которое programs.hyprland даёт
       # безусловно (запись без UWSM). Фильтром этого не сделать: чтение
       # собственной опции замкнуло бы вычисление на себя.
+      #
+      # Exec ниже вызывает start-hyprland, а не сырой бинарь Hyprland: без
+      # сторожевого процесса Hyprland сам показывает оверлей "launched without
+      # start-hyprland. This is highly advised against" при каждом запуске
+      # (подтверждено в журнале сессии) и не перезапускается при аварийном
+      # завершении.
       uwsmSession = pkgs.writeTextFile {
         name = "hyprland-uwsm-session";
         destination = "/share/wayland-sessions/hyprland-uwsm.desktop";
@@ -47,7 +53,7 @@ _: {
           [Desktop Entry]
           Name=Hyprland (UWSM)
           Comment=Hyprland, запущенный через UWSM (DESK-2)
-          Exec=${lib.getExe config.programs.uwsm.package} start -F -- /run/current-system/sw/bin/Hyprland
+          Exec=${lib.getExe config.programs.uwsm.package} start -F -- /run/current-system/sw/bin/start-hyprland
           Type=Application
         '';
         derivationArgs.passthru.providedSessions = [ "hyprland-uwsm" ];
