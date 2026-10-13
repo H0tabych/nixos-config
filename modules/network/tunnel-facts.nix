@@ -1,8 +1,8 @@
 # Фича: tunnel-facts · Слот: — · Домен: network · Классы: N · Для: хоста с пресетом tunnel
 # Контракт: ARCH-4, VPN_SUBSYSTEM 2.3, VPN-RTE-4..6, VPN-DNS-3/4, VPN-INT-5.
 # Объявление my.tunnel.* и публичных умолчаний (аналог host-facts); значений
-# секретов здесь нет (SEC-2). killswitch.allowedInterfaces и bypass.units —
-# R5.4 (режим M2), их тут ещё нет.
+# секретов здесь нет (SEC-2). Опции режима M2 (killswitch, bypass, dns.scopedZones)
+# объявлены в приватной части _tunnel-facts-m2.nix (STR-6).
 # Зависимости: —
 _: {
   flake.modules.nixos.tunnel-facts =
@@ -101,6 +101,9 @@ _: {
           default = "blocked";
           description = "Политика IPv6; tunneled — только после проверки выхода (VPN-DNS-4).";
         };
-      };
+      }
+      # Опции режима M2 (kill switch, обход, класс `scoped`) — в приватной части
+      # рядом с владельцем: файл перевалил за 150 строк (STR-6, C6).
+      // (import ./_tunnel-facts-m2.nix { inherit lib; }).m2Options;
     };
 }

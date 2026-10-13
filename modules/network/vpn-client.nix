@@ -9,14 +9,17 @@
 # не атрибут username/password — тот кладёт значения в стор), путь — из sops
 # (принцип SEC-4: в /nix/store — только путь, не значение).
 #
-# DNS: сервер отдаёт split-horizon-зону (dhcp-option DNS 10.0.1.252 +
-# DOMAIN-SEARCH cs.local/controlsystems.ru/metasfera.ru). Без неё внутренние имена
+# DNS: сервер отдаёт split-horizon-зону. Без адресации по зонам внутренние имена
 # резолвятся в публичные адреса, для которых сервер не пушит маршрут, и доступа к
-# ресурсам нет — туннель поднимается, но бесполезен. Поэтому updateResolvConf
-# включена здесь.
-# ⚠ ПРОВЕРИТЬ/РАСХОЖДЕНИЕ: по ARCH-1 владелец DNS — dns-resolver/network-manager,
-# а не эта фича; перенос владения — R5.4 (VPN-INT-5). До тех пор это
-# осознанное отступление: без него фича не выполняет своё назначение.
+# ресурсам нет — туннель поднимается, но бесполезен.
+# Владелец DNS — dns-resolver (ARCH-1 в редакции ADR-34: владелец механизма ≠
+# источник данных). Эта фича — **вкладчик**: она владеет линком и требует для
+# него scoped-запись, но системный резолвер не пишет. Поэтому
+# updateResolvConf здесь НЕ включается — а вместе с ним NixOS-модуль openvpn не
+# добавляет и `script-security 2` (он появляется только при up/down/updateResolvConf),
+# то есть внешние скрипты в юните не исполняются (R5.4).
+# Сами зоны и адрес корпоративного резолвера — публичные данные политики класса C
+# (VPN-RTE-1), задаются в хосте через my.tunnel.dns.scopedZones.
 #
 # VPN-INT-5 («поверх туннеля по умолчанию») — цель M2 (R5.4), до него трафик
 # OpenVPN идёт напрямую — задокументированное отступление для M1.
@@ -39,8 +42,19 @@ in
         config = "config ${assetsFile "vpn-client/${config.my.host.name}.ovpn"}";
         authUserPass = config.sops.secrets."vpnClient.credentials".path;
         autoStart = false;
-        updateResolvConf = true;
       };
+
+      # Вкладчик, а не владелец (ADR-34): фича не настраивает DNS, но без
+      # scoped-записи для её зон внутренние имена ушли бы к публичному
+      # резолверу — это ровно дефект D6, поэтому отказ на сборке, а не молча.
+      assertions = [
+        {
+          assertion = config.my.tunnel.mode != "m2" || config.my.tunnel.dns.scopedZones != [ ];
+          message =
+            "vpn-client в режиме m2 требует my.tunnel.dns.scopedZones для корпоративных зон "
+            + "(VPN-DNS-1, класс scoped): без них split-horizon-имена уйдут к публичному резолверу";
+        }
+      ];
 
       # NixOS-модуль openvpn задаёт Restart=always без задержки. При AUTH_FAILED
       # openvpn выходит сразу, и юнит перезапускался раз в ~2.5 с — в журнале
