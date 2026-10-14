@@ -19,129 +19,89 @@ VPN-CLI-3 требует, чтобы клиент проверял подлин�
 
 ---
 
-## Переход на M2 (R5.4) — реализация и включение
+## Переход на M2 (R5.4) — состояние и что осталось
 
-`dns-resolver` и `killswitch` уже в репозитории и работоспособны (проверено
-в `tests/killswitch-fail-fast` — ВМ-тест, не теория): они включаются по
-`my.tunnel.mode == "m2"` и сейчас неактивны, потому что в `tunnel-xray.nix`
-режим M2 — **зарезервированная ветка без реализации** (TUN-inbound и
-`dns-out` не добавлены; `domainStrategy` зашит на M1-значение). Ниже —
-точный план, чтобы это стало работающим кодом, а не предположением: схема
-проверена `xray run -test` на пакете из этого flake (`xray-26.3.27`), а не
-взята из памяти (правило 4 CLAUDE.md).
+**Код режима M2 реализован и в репозитории** (коммиты R5.4): `dns-resolver`,
+`killswitch`, `tun-in`/`dns-out` в `tunnel-xray`, политика маршрутизации,
+метка сокета против петли. Всё включается одним параметром
+`my.tunnel.mode = "m2"` и сейчас **неактивно** — `mode` остаётся `m1`, пока
+не пройден гейт 7.3 на машине.
 
-### 1. Код: TUN-инбаунд и DNS-исход в `tunnel-xray.nix`
+### Что выяснила живая проверка 2026-10-14 (важно, не повторять ошибку)
 
-Проверено `xray run -test` на сборке из этого flake — конфигурация с ниже
-перечисленными полями проходит валидацию ядра (ошибка, которая остаётся,
-— `operation not permitted` при попытке реально создать устройство без
-`CAP_NET_ADMIN`, то есть синтаксис принят, не хватает только привилегии,
-которая уже выставляется в M2 ниже в файле):
+1. **У `tun`-инбаунда xray 26.3.27 нет автомаршрутизации.** Ядро создаёт
+   устройство по `name`/`mtu`, но системных маршрутов **не ставит**. Полей
+   `autoSystemRoutingTable`/`autoOutboundsInterface`, которые раньше стояли
+   и в эскизе P.3, и в коде, в этой версии **не существует**.
+2. **`xray run -test` этого не поймает.** Неизвестные поля `settings` ядро
+   игнорирует **молча**: конфиг с заведомо бессмысленным полем
+   (`"thisFieldIsCompleteNonsense12345": true`) проходит проверку. Значит
+   `run -test` подтверждает только существование инбаунда и общий синтаксис,
+   но **не** что имена полей настоящие и соблюдаются. Проверять поведение —
+   только по факту (`ip route`, `ip rule`), а не по успешной валидации.
+3. Из-за (1) трафик при включённом M2 продолжал идти напрямую через
+   физический интерфейс, а DNS переставал работать совсем — `dns-resolver`
+   в M2 намеренно без upstream и без fallback (VPN-DNS-6), а единственный
+   легитимный путь (через туннель) не поднимался.
+4. **Ложная тревога, снята:** казалось, что kill switch пропускает трафик
+   мимо туннеля (`curl` до внешнего адреса проходил при активной таблице).
+   Причина была в тестовой среде, а не в правилах: в оболочке остались
+   прокси-переменные режима M1, поэтому `curl` уходил на `127.0.0.1:10809`
+   (правило `oifname "lo" accept`), а дальше xray — со своей меткой
+   (`meta mark … accept`). Трафик шёл **через туннель**, то есть kill switch
+   работал верно. При проверке M2 прокси-переменные из окружения надо
+   убирать (`env -u http_proxy -u https_proxy -u all_proxy …`), иначе
+   измеряется не то.
+
+Решение по (1) — запасной путь, прямо предписанный P.3: **метка сокета +
+политика маршрутизации**. Реализовано: `sockopt.mark` в конфиге xray и юнит
+`tunnel-routes`, привязанный к появлению устройства (`BindsTo` на
+`sys-subsystem-net-devices-xray\x2dtun0.device`), который поднимает таблицу
+`7777` (`default dev xray-tun0`) и два правила — `fwmark <mark> → main`
+приоритетом 100 (трафик самого клиента идёт физическим интерфейсом, иначе
+петля) и `lookup 7777` приоритетом 200 (всё остальное — в туннель).
+
+### Гейт 7.3 — проверить на машине (M2-1…M2-9, VPN_SUBSYSTEM.md §7.3)
+
+Включение обратимо на каждом шаге; `just test` применяет немедленно и
+**без** перезагрузки, поэтому откат — вернуть `mode` на `m1` и повторить
+`just test`, не трогая загрузчик.
 
 ```sh
-# Воспроизвести проверку самостоятельно, не поднимая реальный туннель:
-cat > /tmp/tun-test.json <<'EOF'
-{
-  "inbounds": [{ "tag": "tun-in", "protocol": "tun",
-    "settings": { "name": "xray-tun0", "mtu": 1500,
-                  "autoSystemRoutingTable": true, "autoOutboundsInterface": true },
-    "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] } }],
-  "outbounds": [{ "tag": "dns-out", "protocol": "dns" }, { "tag": "direct", "protocol": "freedom" }],
-  "routing": { "domainStrategy": "AsIs",
-    "rules": [{ "inboundTag": ["tun-in"], "port": "53", "outboundTag": "dns-out" }] }
-}
-EOF
-XRAY=$(nix build --no-link --print-out-paths .#nixosConfigurations.sgms-laptop.config.services.xray.package)
-"$XRAY/bin/xray" run -test -c /tmp/tun-test.json
-# "Failed to start: ... operation not permitted" = синтаксис принят, не
-# хватает только CAP_NET_ADMIN — ровно ожидаемый результат без привилегии.
+# 1. modules/hosts/sgms-laptop.nix: в блоке my.tunnel добавить mode = "m2";
+just build sgms-laptop && nvd diff /run/current-system result
+just test sgms-laptop
+
+# 2. Маршруты и правила реально поднялись (главная проверка — именно она,
+#    а не успешный `run -test`):
+systemctl status tunnel-routes.service
+ip rule list                       # ожидаются приоритеты 100 (fwmark) и 200
+ip route show table 7777           # default dev xray-tun0
+
+# 3. Трафик БЕЗ прокси-переменных идёт через выход (иначе измеряется прокси):
+env -u http_proxy -u https_proxy -u all_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+    -u ALL_PROXY curl -s https://ifconfig.me; echo
+
+# 4. Нет петли: трафик самого клиента помечен и идёт в main, не в туннель —
+#    проверяется правилами, а не адресом выхода (он секрет, SEC-4):
+ip rule list | grep -E "fwmark|7777"
 ```
-
-Правки в `modules/network/tunnel-xray.nix` (внутри `let xrayConfig = ...`,
-рядом с существующими `inbounds`/`outbounds`/`routing`):
-
-1. **`inbounds`** — добавить при `cfg.mode == "m2"`:
-   ```nix
-   ++ lib.optionals (cfg.mode == "m2") [{
-     tag = "tun-in"; protocol = "tun";
-     settings = {
-       name = "xray-tun0"; mtu = 1500;
-       autoSystemRoutingTable = true; autoOutboundsInterface = true;
-     };
-     sniffing = { enabled = true; destOverride = [ "http" "tls" "quic" ]; };
-   }]
-   ```
-2. **`outbounds`** — добавить `{ tag = "dns-out"; protocol = "dns"; }` при
-   `cfg.mode == "m2"`; на существующем `outbound` с `tag = "proxy"`
-   (реальное VLESS-соединение к выходу) добавить
-   `streamSettings.sockopt.mark = cfg.killswitch.mark` — **та же метка**,
-   что уже объявлена в `my.tunnel.killswitch.mark` и используется в
-   `killswitch.nix` (`meta mark ... accept`). Переиспользуется готовая
-   опция (ARCH-5), а не вводится вторая: без метки собственное соединение
-   xray к выходу попало бы в `tun-in` как обычный трафик и зациклилось бы
-   через само себя.
-3. **`routing.domainStrategy`** — `if cfg.mode == "m2" then "AsIs" else "IPOnDemand"`
-   (M1 резолвит по требованию, VPN-RTE-3; M2 — IP уже известен из sniffing).
-4. **`routing.rules`** — при M2 **первым** правилом (выше остальных, VPN-RTE-2):
-   `{ inboundTag = [ "tun-in" ]; port = "53"; outboundTag = "dns-out"; }`
-   — DNS из туннельного интерфейса уходит в DNS-модуль самого xray, не наружу.
-
-**ПРОВЕРИТЬ при реализации** (архитектура сама это отмечает в P.3):
-`autoSystemRoutingTable`/`autoOutboundsInterface` могут не определить
-исходящий интерфейс правильно после смены сети — если после включения M2
-переключение Wi-Fi↔Ethernet рвёт соединение, запасной путь — выключить оба
-поля и прописать политику маршрутизации (`ip rule add fwmark <mark> ...`)
-вручную в самой фиче, с той же меткой `cfg.killswitch.mark`.
-
-### 2. Тест в ВМ — обязателен до правки реальной машины
-
-По образцу `tests/tunnel-config.nix` (там же фиктивные секреты через
-`config.sops.placeholder`), но с `my.tunnel.mode = "m2"` в фикстуре хоста —
-убедиться, что **весь** рендер проходит `xray run -test` ядром, включая
-`tun-in`/`dns-out`/изменённый `domainStrategy`. Создать
-`tests/tunnel-config-m2.nix`, подключится он сам через
-`modules/core/checks-subsystems.nix` (там один каталог `tests/`
-подключается целиком — ничего больше трогать не нужно). `nix flake check`
-должен пройти.
-
-### 3. Гейт 7.3 — проверить на машине (M2-1…M2-9, VPN_SUBSYSTEM.md §7.3)
-
-Делается **после** шагов 1–2, **до** переключения режима на реальном
-хосте — через временный ручной запуск с `mode = "m2"` в тестовой ветке или
-прямо в `just build`+`nvd diff` без `boot` (см. шаг 4, там же откат).
 
 | № | Критерий | Как проверить |
 |---|---|---|
-| M2-1 | TCP/UDP/DNS, QUIC откатывается на TCP | `curl`, DNS-запрос, `curl --http3` к ресурсу без QUIC на выходе |
-| M2-2 | Нет петель | `ip route get <адрес выхода>` — должен идти НЕ через `xray-tun0` |
-| M2-3 | Переживает смену сети | Переключить Wi-Fi↔точка доступа телефона, проверить разрыв/восстановление |
-| M2-4 | Переживает 3 цикла гибернации | Уже подтверждено R5.1 — переповторить именно в режиме m2 |
-| M2-5 | DNS без обхода | `resolvectl status xray-tun0`; запрос к заблокированному домену не идёт мимо |
-| M2-6 | DynamicUser, минимальные права | `systemctl show tunnel-xray -p User,DynamicUser` |
-| M2-7 | Нагрузка на CPU приемлема | `top`/`systemd-cgtop` под целевой скоростью |
-| M2-8 | Трафик контейнеров покрыт, `bypass.units` работает | Поднять тестовый контейнер, проверить маршрут |
-| M2-9 | Версия в стабильном канале проходит M2-1…8 | Фиксируется результатом остальных пунктов |
+| M2-1 | TCP/UDP/DNS, QUIC откатывается на TCP | `curl` без прокси-переменных, DNS-запрос, `curl --http3` |
+| M2-2 | Нет петель | `ip rule list` — правило `fwmark` выше правила таблицы туннеля |
+| M2-3 | Переживает смену сети | Wi-Fi ↔ точка доступа телефона; `tunnel-routes` должен перезапуститься по устройству |
+| M2-4 | Переживает 3 цикла гибернации | R5.1 подтверждён — повторить именно в режиме m2 |
+| M2-5 | DNS без обхода | `resolvectl status`; DNS мимо туннеля отказывается (KS-5) |
+| M2-6 | DynamicUser, минимальные права | `systemctl show tunnel-xray -p User,DynamicUser,AmbientCapabilities` |
+| M2-7 | Нагрузка на CPU приемлема | `systemd-cgtop` под целевой скоростью |
+| M2-8 | Трафик контейнеров покрыт, `bypass.units` работает | Поднять контейнер, проверить маршрут |
+| M2-9 | Версия в стабильном канале проходит M2-1…8 | Итог остальных пунктов |
 
-Результаты — в `docs/runbook.md`/ADR по решению гейта (OPS-7), не только в
-памяти.
+Результаты — в `docs/runbook.md`/ADR по решению гейта (OPS-7).
 
-### 4. Включение — обратимо на каждом шаге
-
-```sh
-# modules/hosts/sgms-laptop.nix: my.tunnel.mode = "m2";
-just build sgms-laptop && nvd diff /run/current-system result
-just test sgms-laptop          # применяет НЕМЕДЛЕННО, без перезагрузки
-curl ifconfig.me                # должен быть адрес выхода
-nft list table inet killswitch  # таблица должна появиться
-ip route get 1.1.1.1             # не через xray-tun0 — это была бы петля
-```
-
-Если что-то не так — `my.tunnel.mode = "m1"` обратно, `just test` — всё
-гасится без перезагрузки (`killswitch`/`dns-resolver` выключаются по
-тому же параметру, VPN-KS-1). Только после уверенности в `test` —
-`just boot` и перезагрузка.
-
-### 5. R5.5 — после включения M2
+### R5.5 — после включения M2
 
 Процедуры ниже (портал, откат kill switch, клиенты, адрес выхода) имеют
 смысл только когда M2 реально активен. Пройти каждую вживую один раз,

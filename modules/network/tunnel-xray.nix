@@ -40,6 +40,7 @@ in
       pkg = pkgs.xray;
       ph = name: config.sops.placeholder.${name};
       policy = import ./_tunnel-xray-policy.nix { inherit lib; };
+      routes = import ./_tunnel-xray-routes.nix { inherit lib pkgs; };
 
       queryStrategy = if cfg.ipv6 == "blocked" then "UseIPv4" else "UseIP";
 
@@ -110,6 +111,15 @@ in
         content = builtins.toJSON xrayConfig;
         restartUnits = [ "tunnel-xray.service" ];
       };
+
+      # M2: маршруты поднимает отдельный юнит по появлению устройства —
+      # xray их не настраивает (см. шапку _tunnel-xray-routes.nix).
+      systemd.services.tunnel-routes = lib.mkIf (mode == "m2") (
+        routes.mkRoutesService {
+          inherit (policy) tunInterface;
+          inherit (cfg.killswitch) mark;
+        }
+      );
 
       systemd.services.tunnel-xray = {
         description = "Клиент туннеля (VLESS + Reality, режим ${mode})";
