@@ -5,6 +5,11 @@ result-*
 .env
 .env.*
 
+# шаблоны проектов (R6.2): локальные сборочные артефакты, не часть шаблона
+/templates/*/.venv/
+/templates/*/target/
+/templates/*/build/
+
 # личные настройки ассистента
 CLAUDE.local.md
 .claude/settings.local.json
