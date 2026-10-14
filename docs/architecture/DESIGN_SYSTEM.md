@@ -1041,7 +1041,7 @@ if not os.path.isfile(cfg):
 env = dict(os.environ, STARSHIP_SHELL="zsh", STARSHIP_SESSION_KEY="bench", STARSHIP_CONFIG=cfg)
 args = ["--status=0", "--jobs=0", "--cmd-duration=0", "--terminal-width=120"]
 left, right = ["starship", "prompt", *args], ["starship", "prompt", "--right", *args]
-base = stats([run(["/bin/true"], env, "/") for _ in range(a.runs)])
+base = stats([run(["true"], env, "/") for _ in range(a.runs)])  # NixOS: /bin/true нет, ищем в PATH
 print(f"fork+exec пустой программы: медиана {base[0]:.1f} мс")
 print(f"{'каталог':<28}{'медиана':>9}{'p95':>8}{'макс':>8}   (левая + правая, мс)")
 for d in map(os.path.abspath, a.dirs):

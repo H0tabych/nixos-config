@@ -13,6 +13,9 @@ VPN_SUBSYSTEM.md P.6/P.7).
   (VPN-LLM-1…6), процедура изменения конфига выхода (VPN-SRV-7)
 - [`runbook/storage.md`](runbook/storage.md) — хранилище: снимки и восстановление
   (STO-8, A11), откат поколения (OPS-5), scrub (STO-9), гибернация (STO-5)
+- [`runbook/design-system.md`](runbook/design-system.md) — дизайн-система Glass
+  Tide: журнал замеров (DSN-A9, DSN-A10, DSN-A13), ручное переключение профилей
+  эффектов
 
 ## Бюджет ёмкости (STO-11)
 

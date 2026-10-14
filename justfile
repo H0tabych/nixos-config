@@ -67,6 +67,11 @@ new-feature domain name:
 hibernate-offset file="":
     bash scripts/hibernate-offset.sh {{ file }}
 
+# Замер отклика промпта starship (DSN-A13, ROADMAP R6.4/R6.9, DESIGN_SYSTEM.md
+# Приложение I.7). Каталоги — реальные рабочие репозитории и самый большой из них.
+bench-prompt config *dirs:
+    python3 scripts/bench-prompt.py --config {{ config }} {{ dirs }}
+
 sops-edit file:
     sops {{ file }}
 
