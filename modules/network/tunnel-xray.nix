@@ -11,9 +11,14 @@
 # по VPN-CLI-3 (ядро xray-core проверку поддерживает); запись со сроком
 # пересмотра — в docs/runbook/tunnel.md.
 # DNS и routing строятся из my.tunnel.policy.* данными _tunnel-xray-policy.nix
-# (STR-6); domainStrategy = "IPOnDemand" — M1 (VPN-RTE-3), R5.4 заменит на "AsIs"
-# и добавит tun-in/dns-out (P.3).
-# Режим M2 (TUN, killswitch, R5.4) — только зарезервированная ветка по my.tunnel.mode.
+# (STR-6); domainStrategy — "IPOnDemand" в M1 (резолвит по требованию,
+# VPN-RTE-3), "AsIs" в M2 (IP уже известен из sniffing tun-in, P.3).
+# Метка sockopt.mark на outbound "proxy" — my.tunnel.killswitch.mark, та же,
+# что killswitch.nix пропускает своим правилом (VPN-KS-2): без неё в M2
+# собственное соединение xray к выходу попало бы в tun-in и зациклилось бы
+# через само себя. Опция существует всегда (не только в M2), поэтому
+# присваивается без условия на mode — в M1 метка просто ни на что не влияет
+# (таблицы killswitch нет), вторая опция не вводится (ARCH-5).
 # Зависимости: host-facts (my.host.name), tunnel-facts (my.tunnel.*; через
 # config.my.*, не import — ARCH-3).
 { config, ... }:
@@ -31,6 +36,7 @@ in
     }:
     let
       cfg = config.my.tunnel;
+      inherit (cfg) mode;
       pkg = pkgs.xray;
       ph = name: config.sops.placeholder.${name};
       policy = import ./_tunnel-xray-policy.nix { inherit lib; };
@@ -44,7 +50,7 @@ in
           inherit queryStrategy;
           inherit (policy) dohResolvers;
         };
-        inbounds = policy.mkInbounds { inherit (cfg) local; };
+        inbounds = policy.mkInbounds { inherit (cfg) local mode; };
         outbounds = [
           {
             tag = "proxy";
@@ -77,13 +83,14 @@ in
                 # сразу после включения подписи на выходе (VPN-SRV-3).
                 mldsa65Verify = "";
               };
+              sockopt.mark = cfg.killswitch.mark;
             };
           }
         ]
-        ++ policy.mkOutbounds { inherit (cfg) ipv6; };
+        ++ policy.mkOutbounds { inherit (cfg) ipv6 mode; };
         routing = {
-          domainStrategy = "IPOnDemand";
-          rules = policy.mkRoutingRules cfg.policy;
+          domainStrategy = if cfg.mode == "m2" then "AsIs" else "IPOnDemand";
+          rules = policy.mkRoutingRules (cfg.policy // { inherit mode; });
         };
       };
     in
@@ -105,7 +112,7 @@ in
       };
 
       systemd.services.tunnel-xray = {
-        description = "Клиент туннеля (VLESS + Reality, M1)";
+        description = "Клиент туннеля (VLESS + Reality, режим ${mode})";
         wantedBy = [ "multi-user.target" ];
         # sops-nix рендерит секреты и шаблоны в system.activationScripts.setupSecrets,
         # юнита sops-nix.service не существует — ordering к нему systemd молча
@@ -125,9 +132,13 @@ in
           ProtectSystem = "strict";
           ProtectHome = true;
           PrivateTmp = true;
-          # M1: без доп. привилегий (VPN-CLI-5); M2 (R5.4) добавит CAP_NET_ADMIN (ARCH-6).
-          CapabilityBoundingSet = lib.optionals (cfg.mode == "m2") [ "CAP_NET_ADMIN" ];
-          AmbientCapabilities = lib.optionals (cfg.mode == "m2") [ "CAP_NET_ADMIN" ];
+          # M1: без доп. привилегий (VPN-CLI-5). M2: CAP_NET_ADMIN для tun-in —
+          # DynamicUser без нужной группы, /dev/net/tun у хоста crw-rw-rw-,
+          # но TUNSETIFF и настройку маршрутов требует именно capability, не
+          # прав на файл устройства (ARCH-6: включение — составом/значением
+          # опции, не отдельным enable).
+          CapabilityBoundingSet = lib.optionals (mode == "m2") [ "CAP_NET_ADMIN" ];
+          AmbientCapabilities = lib.optionals (mode == "m2") [ "CAP_NET_ADMIN" ];
         };
       };
     };
