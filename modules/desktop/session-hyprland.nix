@@ -24,6 +24,13 @@
 # устройств). Так замена реализации слота остаётся правкой одной фичи (SLOT-3).
 # Доставка — дропин uwsm/env.d/* (man uwsm(1)), чтобы не делить владение
 # uwsm/env с прокси-переменными (ARCH-1); тексты — в приватной части (STR-6).
+# Курсор и Qt-платформа (XCURSOR_*, QT_QPA_PLATFORMTHEME) — значения решены в
+# профиле реализации (DESIGN_SYSTEM.md P.3.6), не читаются из палитры, поэтому
+# владение ими у фичи `theme` не отбирается (DOT-7 — единственный механизм
+# доставки переменных графической сессии именно здесь, у session-hyprland).
+# ПРОВЕРИТЬ: значение QT_QPA_PLATFORMTHEME для Qt6-приложений (Приложение I.6,
+# M7) — взято из собственного маппинга Home Manager `qt.platformTheme.name =
+# "qtct"` → `qt5ct`, не проверено на реальных приложениях.
 # Зависимости: display-manager (сессия должна быть предложена менеджером входа);
 # tunnel-facts (my.tunnel.*, опционально); host-facts (my.host.gpu.*BusId) и
 # gpu-hybrid (симлинки /dev/dri/by-host/*) — только чтение фактов (ARCH-3).
@@ -109,6 +116,13 @@ _: {
         (lib.mkIf hybridGraphics {
           "xdg/uwsm/env.d/10-compositor-devices".text = compositorDevices.envDropIn;
         })
+        {
+          "xdg/uwsm/env.d/20-theme".text = ''
+            export XCURSOR_THEME=Bibata-Modern-Ice
+            export XCURSOR_SIZE=24
+            export QT_QPA_PLATFORMTHEME=qt5ct
+          '';
+        }
         (lib.mkIf proxyMode {
           "xdg/uwsm/env".text = ''
             export http_proxy=${httpProxyUrl}
