@@ -10,6 +10,7 @@
 - [`architecture/STRUCTURE.md`](architecture/STRUCTURE.md) — структура репозитория, проверки C1–C12
 - [`architecture/VPN_SUBSYSTEM.md`](architecture/VPN_SUBSYSTEM.md) — туннель, DNS, kill switch
 - [`architecture/AI_SUBSYSTEM.md`](architecture/AI_SUBSYSTEM.md) — инференс, шлюз, агенты
+- [`architecture/DESIGN_SYSTEM.md`](architecture/DESIGN_SYSTEM.md) — дизайн-система рабочего стола: стекло, палитра, токены, профили эффектов
 - [`architecture/ROADMAP.md`](architecture/ROADMAP.md) — дорожная карта; шаги `R<этап>.<n>`, Gate'ы `G<n>`
 
 ## Хост

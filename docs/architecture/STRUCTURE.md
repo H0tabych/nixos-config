@@ -341,6 +341,7 @@ docs/
 │   ├── ARCHITECTURE.md          # нормативная Архитектура
 │   ├── STRUCTURE.md             # этот документ
 │   ├── AI_SUBSYSTEM.md
+│   ├── DESIGN_SYSTEM.md
 │   ├── VPN_SUBSYSTEM.md
 │   └── ROADMAP.md               # дорожная карта; галочки в колонке «Готово» — трекер
 ├── hosts/<хост>.md              # физические характеристики железа (без привязки к ОС)
@@ -579,7 +580,7 @@ nixos-config/
 │                            check-secrets.sh  dotfiles-clone.sh  hibernate-offset.sh  new-feature.sh
 └── docs/
     ├── README.md  runbook.md  runbook/{tunnel,ai}.md
-    ├── architecture/         ARCHITECTURE.md  STRUCTURE.md  AI_SUBSYSTEM.md  VPN_SUBSYSTEM.md  ROADMAP.md
+    ├── architecture/         ARCHITECTURE.md  STRUCTURE.md  AI_SUBSYSTEM.md  VPN_SUBSYSTEM.md  DESIGN_SYSTEM.md  ROADMAP.md
     ├── hosts/                sgms-laptop.md
     └── adr/                  ADR-001-….md … ADR-032-….md
 

@@ -27,6 +27,7 @@ grep -n "STO-4" docs/architecture/*.md
 | `STRUCTURE.md` | куда что класть в репозитории; проверки C1–C11 | STR |
 | `VPN_SUBSYSTEM.md` | туннель, DNS, kill switch | VPN |
 | `AI_SUBSYSTEM.md` | инференс, шлюз, агенты | AI |
+| `DESIGN_SYSTEM.md` | дизайн-система: стекло, палитра, токены, профили эффектов; приёмка DSN-A1… | DSN |
 | `ROADMAP.md` | пошаговый план; шаги `R<этап>.<n>`, Gate'ы `G<n>` | R, G, W |
 | `docs/hosts/sgms-laptop.md` | факты железа; значения с ⚠ не подтверждены | — |
 
