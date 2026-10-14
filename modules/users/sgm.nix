@@ -14,6 +14,7 @@ _: {
       "media"
       "gaming"
       "ml"
+      "containers"
     ];
     # Рабочая копия dotfiles (R4.6, DOT-4); включает симлинки ~/.config/<app>.
     dotfiles.source = "/home/sgm/.dotfiles";

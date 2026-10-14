@@ -1,6 +1,6 @@
 # Фича: sgms-laptop · Слот: — · Домен: hosts · Классы: N · Для: sgm
 # Контракт: ARCH-4, HOST-1, STR-8. Композиция хоста + факты my.host.* (без пакетов и сервисов).
-# Зависимости: presets base/laptop/desktop/development/media/tunnel; gpu-*, vpn-client
+# Зависимости: presets base/laptop/desktop/development/media/containers/tunnel; gpu-*, vpn-client
 # подключаются прямо из хоста (HOST-3, персональная фича, не для класса laptop);
 # machines/sgms-laptop/hardware.nix — исключение STR-9.
 { config, inputs, ... }:
@@ -20,6 +20,7 @@ in
       n.desktop
       n.development
       n.media
+      n.containers
       n.gpu-integrated
       n.gpu-discrete
       n.gpu-hybrid

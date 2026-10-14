@@ -1,6 +1,7 @@
 # Фича: development · Слот: — · Домен: presets · Классы: N+H · Для: пользователей с capability development
-# Контракт: STR-7, USER-4. Редактор + полный lsp-global (R6.1); databases,
-# api-tools добавятся позже (R6.3).
+# Контракт: STR-7, USER-4. Редактор + полный lsp-global (R6.1) + databases
+# (R6.3); api-tools — опционально, пока не введена (не выдумываем состав без
+# записи в ARCHITECTURE.md A.3).
 # editor-neovim — только N-класс (пакет и EDITOR системные, см. файл фичи),
 # поэтому в homeManager-части его нет.
 # Зависимости: —
@@ -14,6 +15,9 @@ in
     imports = [ n.editor-neovim ];
   };
   flake.modules.homeManager.development = {
-    imports = [ hm.lsp-global ];
+    imports = [
+      hm.lsp-global
+      hm.databases
+    ];
   };
 }
