@@ -51,6 +51,14 @@ let
       value = targetNameOverrides.${dir} or dir;
     }) appDirs
   );
+
+  # DSN-S5 (R6.8, исправление): имя файла обоев активного варианта — из того же
+  # закреплённого input dotfiles, которым уже пользуется theme.nix (DSN-TOK-6).
+  # Абсолютный путь к самим обоям собирается ниже из dotfiles.source пользователя
+  # (DOT-5: факт установки, не из dotfiles) — hyprlang не резолвит $HOME сам
+  # по себе (ПРОВЕРЕНО на машине 2026-10-15: hyprpaper молча не находит обои).
+  palette = builtins.fromTOML (builtins.readFile "${inputs.dotfiles}/theme/palette.toml");
+  wallpaperFile = palette.variant.${palette.active}.wallpaper.file;
 in
 {
   # Для `just dotfiles-clone` (R4.6): путь нужен вне Nix-сборки, поэтому
@@ -93,6 +101,20 @@ in
           lib.mapAttrsToList (
             name: text: "L+ /home/${user}/.config/machine.d/${name} - - - - ${pkgs.writeText name text}"
           ) machineFiles
+        ) desktopUsers
+        # Путь к обоям зависит от dotfiles.source конкретного пользователя (не
+        # только от фактов хоста), поэтому отдельно от machineFiles выше.
+        ++ lib.concatMap (
+          user:
+          let
+            src = outer.my.users.${user}.dotfiles.source or null;
+          in
+          lib.optional (src != null)
+            "L+ /home/${user}/.config/machine.d/hypr-wallpaper.conf - - - - ${pkgs.writeText "hypr-wallpaper.conf" ''
+              # Сгенерировано Nix (dotfiles-link, DOT-5) из my.users.<user>.dotfiles.source
+              # и theme/palette.toml (input dotfiles) — не редактируйте руками.
+              $wallpaper = ${src}/theme/wallpapers/${wallpaperFile}
+            ''}"
         ) desktopUsers;
     };
 
