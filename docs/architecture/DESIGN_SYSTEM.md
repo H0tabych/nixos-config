@@ -1005,6 +1005,10 @@ end
 | M11 | Сегмент `nix_shell` в окружениях direnv | войти в каталог с `use flake` | показано `nix:impure` или `nix:pure`; иначе убрать сегмент и показывать окружение иначе |
 | M12 | Потребление (DSN-A10) | 10 минут простоя на батарее при профилях `ac` и `battery`: среднее `power_now` из `/sys/class/power_supply/BAT*/power_now` | `battery` не выше, чем без дизайна; записать в runbook |
 | M13 | Курсор во всех тулкитах | GTK-, Qt- и Xwayland-окно (Steam) над одним курсором | Bibata 24 везде; иначе проверить env-файл UWSM |
+| M14 | Разрешение `$HOME` в hyprlang без явного объявления переменной (`hypr/theme.conf`, `hypr/hyprpaper.conf`, DSN-S5/R6.8) | `hyprctl reload`; `hyprpaper` с этим конфигом — обои появляются; `hyprlock` — фон не чёрный | путь к обоям резолвится через окружение процесса; иначе — задать `$wallpaper` абсолютным путём через машинный слой (`_dotfiles-link-machine.nix`, по образцу `hypr.lua`) |
+| M15 | JSON кастомных модулей waybar (`custom/tunnel`, `custom/dnd`) и модуль `privacy` (DSN-S5/R6.8) | живая сессия: `systemctl stop/start tunnel-xray`, `makoctl mode -a do-not-disturb`, запись экрана/микрофон | классы `connected`/`disconnected`, `active`/`inactive` меняют цвет (style.css); `privacy` показывает иконку только при активном событии |
+| M16 | Класс/состояние SwayOSD при `mute` (`window#osd.muted`, swayosd-theme.css.tmpl) | `swayosd-client --output-volume mute-toggle`, снять скриншот | иконка и `warning`; иначе найти настоящий селектор по `src/server/osd_window.rs` 0.3.1 и поправить шаблон |
+| M17 | Команда остановки сессии UWSM (`rofi/scripts/power`, пункт «Выход») | `uwsm stop` в активной сессии | сессия завершается штатно; иначе заменить на подтверждённую по `uwsm --help`/исходникам |
 
 ## I.7 Замер отклика промпта
 
