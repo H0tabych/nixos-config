@@ -23,6 +23,18 @@
           },${toString o.width}x${toString o.height}@${toString o.refreshRate},auto,1\n"
         ) host.outputs
         + "monitor=,preferred,auto,1\n";
+
+      # Те же факты в формате Lua для hyprland.lua (DSN-S4, R6.7): hl.monitor
+      # вместо строки monitor=…, hl.config({ input = … }) вместо блока input {}.
+      monitorLuaLines =
+        lib.concatMapStrings (o: ''
+          hl.monitor({ output = "${
+            if o.connector == null then "" else o.connector
+          }", mode = "${toString o.width}x${toString o.height}@${toString o.refreshRate}", position = "auto", scale = 1 })
+        '') host.outputs
+        + ''
+          hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
+        '';
     in
     {
       "hypr-monitors.conf" = ''
@@ -36,6 +48,23 @@
             kb_layout = ${host.keyboardLayout}
             kb_options = grp:alt_shift_toggle
         }
+      '';
+
+      # DSN-S4 (R6.7): рядом с hypr-monitors.conf/hypr-input.conf — те же факты
+      # в формате Lua, для hyprland.lua (P.3.1); hyprlock/hyprpaper остаются на
+      # hyprlang и продолжают читать hypr-monitors.conf/hypr-input.conf выше.
+      "hypr.lua" = ''
+        -- Сгенерировано Nix (dotfiles-link, DOT-5) из my.host.outputs и my.host.keyboardLayout — не редактируйте руками.
+      ''
+      + monitorLuaLines
+      + ''
+
+        hl.config({
+          input = {
+            kb_layout = "${host.keyboardLayout}",
+            kb_options = "grp:alt_shift_toggle",
+          },
+        })
       '';
 
       "launch-prefix" = ''
