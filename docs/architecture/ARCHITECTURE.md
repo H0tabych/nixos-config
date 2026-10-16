@@ -316,7 +316,7 @@ let n = config.flake.modules.nixos; in {
 
 **desktop (слоты):** `session-<р>`, `display-manager-<р>`, `bar-<р>`, `notifier-<р>`, `launcher-<р>`, `lockscreen-<р>`, `idle-<р>`, `wallpaper-<р>`, `screenshot-<р>`, `clipboard-<р>`, `polkit-agent-<р>`, `osd-<р>`, `automount-agent-<р>`, `bluetooth-manager-<р>`, `theme` (N+H: GTK/Qt/курсор/иконки, палитра для Nix-владеемых потребителей).
 
-**shell:** `shell-<р>` (N+H), `vcs-tools` (N: VCS нужна nix-фетчеру input'ов до логина и активации Home Manager — системная нужда по ARCH-11; системный пакет доступен каждому пользователю хоста), `env-manager` (N: автоактивация проектных окружений, слой совместимости для динамических бинарников), `terminal-<р>` (H), `file-manager-<р>` (H), `dotfiles-link` (N+H: раздел 8), `user-dirs` (H: стандартные каталоги XDG — Desktop/Documents/Downloads/…, имена латиницей).
+**shell:** `shell-<р>` (N+H), `vcs-tools` (N: VCS нужна nix-фетчеру input'ов до логина и активации Home Manager — системная нужда по ARCH-11; системный пакет доступен каждому пользователю хоста), `env-manager` (N: автоактивация проектных окружений, слой совместимости для динамических бинарников), `prompt-<р>` (N+H: путь к конфигу — переменная окружения, DOT-12), `terminal-<р>` (H), `file-manager-<р>` (H), `dotfiles-link` (N+H: раздел 8), `user-dirs` (H: стандартные каталоги XDG — Desktop/Documents/Downloads/…, имена латиницей).
 
 **dev:** `editor-<р>` (N: пакет и переменная редактора по умолчанию — в одной области видимости, иначе переменная ссылается на отсутствующий в PATH бинарник (DEV-9); глобальный редактор предусмотрен DEV-1), `lsp-global` (H), `containers` (N+H), `databases` (H), `api-tools` (H, опц.).
 
@@ -335,6 +335,7 @@ let n = config.flake.modules.nixos; in {
 | `shell` | Регистрируется в системе; каталог конфигурации сообщает **система** (DOT-12), не конфиг; плагины/фреймворки — пути из машинного слоя; хук `env-manager` — в dotfiles. |
 | `editor` | Пакет и провайдеры; запасные LSP/форматтеры/отладчики — `lsp-global`; менеджер плагинов с lock-файлом в dotfiles (DOT-11); переменная редактора по умолчанию определена **только здесь**. |
 | `terminal`, `file-manager` | Пакет; конфиг — dotfiles; цвета из палитры. |
+| `prompt` | Пакет; путь к конфигу задаёт **система** переменной окружения (DOT-12), как и `shell`; содержимое и инициализация промпта — dotfiles; в tty — простой промпт оболочки (DSN-CMP-12). |
 | `env-manager` | Автоактивация проектных окружений с кэшем; интеграция с шеллом — в dotfiles (системная интеграция отключена, чтобы не было двух хуков). |
 
 **SLOT-1** Реализация слота — одна фича: владеет пакетом, юнитом (если демон), системной интеграцией; конфиг — в dotfiles.
@@ -760,6 +761,7 @@ let n = config.flake.modules.nixos; in {
 | `bluetooth-manager` | blueman |
 | `terminal` / `file-manager` | foot / yazi |
 | `shell` / `env-manager` | zsh (+ oh-my-zsh) / direnv + nix-direnv (+ nix-ld) |
+| `prompt` | starship |
 | `editor` | Neovim (lazy.nvim) |
 | `containers` / `container-gpu` | Docker / NVIDIA container toolkit |
 | `tunnel` | Xray (VLESS + Reality) |
@@ -771,7 +773,7 @@ let n = config.flake.modules.nixos; in {
 
 ### A.4 Начальный реестр dotfiles
 
-`nvim`, `zsh`, `foot`, `hypr` (композитор, idle, lock, wallpaper), `waybar`, `rofi`, `mako`, `yazi`, `mpv`, `git`, `mangohud`.
+`nvim`, `zsh`, `foot`, `hypr` (композитор, idle, lock, wallpaper), `waybar`, `rofi`, `mako`, `swayosd`, `starship`, `yazi`, `mpv`, `git`, `mangohud`.
 
 ### A.5 Языки и шаблоны проектов
 
@@ -808,6 +810,7 @@ Python, SQL, C/C++, Rust.
 - `ZDOTDIR` — через `programs.zsh.shellInit` (`/etc/zshenv`); HM `programs.zsh` не используется; интеграция direnv с zsh отключена, хук — в dotfiles.
 - Пути к oh-my-zsh и плагинам — из машинного слоя с запасными путями дистрибутивов.
 - Neovim нужной версии с новым API LSP; `lazy-lock.json` — в dotfiles.
+- `STARSHIP_CONFIG` — также через `programs.zsh.shellInit` (как `ZDOTDIR`), не `home.sessionVariables`.
 
 **Туннель (Xray)**
 - VLESS + Reality, `flow = xtls-rprx-vision`, проверка постквантовой подписи на клиенте обязательна; клиенты на sing-box её не поддерживали — использовать оригинальный `xray-core`.

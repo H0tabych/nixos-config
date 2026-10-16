@@ -22,6 +22,7 @@ in
       n.shell-zsh
       n.env-manager-direnv
       n.vcs-tools
+      n.prompt-starship
     ];
   };
 }

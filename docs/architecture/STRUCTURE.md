@@ -553,8 +553,8 @@ nixos-config/
 │   │                         clipboard-cliphist  polkit-agent-hyprpolkitagent
 │   │                         osd-swayosd  automount-agent-udiskie  theme
 │   ├── shell/                shell-zsh  vcs-tools  env-manager-direnv  user-dirs
-│   │                         terminal-foot  file-manager-yazi  dotfiles-link
-│   │                         _dotfiles-link-machine.nix
+│   │                         prompt-starship  terminal-foot  file-manager-yazi
+│   │                         dotfiles-link  _dotfiles-link-machine.nix
 │   ├── dev/                  editor-neovim  lsp-global  containers-docker
 │   │                         databases  [api-tools]
 │   ├── office/               office-suite-libreoffice  mail-calendar-thunderbird
@@ -594,15 +594,15 @@ dotfiles/                     (отдельный репозиторий)
 ├── checks/  .github/workflows/
 ```
 
-Квадратные скобки — необязательные фичи. Итого: ≈ 75 фич и ≈ 105 файлов в `modules/`; средний размер файла — 40–80 строк.
+Квадратные скобки — необязательные фичи. Итого: ≈ 76 фич и ≈ 106 файлов в `modules/`; средний размер файла — 40–80 строк.
 
 ## E.2 Состав пресетов (ориентировочно)
 
 | Пресет | Вид | nixos (N) | homeManager (H) |
 |---|---|---|---|
-| `base` | класс хоста | nix-settings, locale-keyboard, users, hm, fonts, host-facts, sops, ssh, firewall, hardening, network-manager, shell-zsh, env-manager-direnv, vcs-tools, dotfiles-link | — |
+| `base` | класс хоста | nix-settings, locale-keyboard, users, hm, fonts, host-facts, sops, ssh, firewall, hardening, network-manager, shell-zsh, env-manager-direnv, vcs-tools, prompt-starship, dotfiles-link | — |
 | `laptop` | класс хоста | power, sleep, layout, swap, maintenance, firmware, audio, bluetooth, automount | — |
-| `user-base` | базис пользователя (ADR-32) | — | dotfiles-link, user-dirs |
+| `user-base` | базис пользователя (ADR-32) | — | dotfiles-link, user-dirs, prompt-starship |
 | `desktop` | capability | session-hyprland, display-manager-sddm, bar-waybar, lockscreen-hyprlock, idle-hypridle, polkit-agent-hyprpolkitagent, osd-swayosd, bluetooth-manager-blueman, theme | notifier-mako, launcher-rofi, wallpaper-hyprpaper, screenshot-grim, clipboard-cliphist, polkit-agent-hyprpolkitagent, osd-swayosd, automount-agent-udiskie, bluetooth-manager-blueman, terminal-foot, file-manager-yazi, theme |
 | `development` | capability | editor-neovim | lsp-global, databases, [api-tools] |
 | `containers` | capability | containers-docker | containers-docker |

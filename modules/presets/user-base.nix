@@ -14,6 +14,7 @@ in
     imports = [
       hm.dotfiles-link
       hm.user-dirs
+      hm.prompt-starship
     ];
   };
 }
