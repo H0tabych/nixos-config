@@ -3,7 +3,10 @@
 # путь к конфигу задаёт система через STARSHIP_CONFIG (DOT-12), по образцу
 # ZDOTDIR в shell-zsh.nix; содержимое starship.toml и инициализация промпта
 # (`starship init zsh`, простой промпт в tty при $TERM=linux, DSN-CMP-12) —
-# целиком в dotfiles (DOT-3).
+# целиком в dotfiles (DOT-3). STARSHIP_LOG=error — таймаут VCS-статуса
+# (DSN-CMP-12: ≤ 50 мс, сегмент отбрасывается) в норме и ожидаем на больших
+# деревьях; подавляет штатный WARN starship об этом, не трогая сам таймаут
+# (ПРОВЕРЕНО на машине, R6.9).
 # Зависимости: shell-zsh (programs.zsh.enable) — assertion, не импорт (ARCH-3).
 _: {
   flake.modules.nixos.prompt-starship =
@@ -18,6 +21,7 @@ _: {
 
       programs.zsh.shellInit = ''
         export STARSHIP_CONFIG="$HOME/.config/starship/starship.toml"
+        export STARSHIP_LOG=error
       '';
     };
 
