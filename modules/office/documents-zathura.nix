@@ -10,6 +10,10 @@
 # mimeapps.list порядок в mimeinfo.cache не гарантирован). Единственный
 # текущий потребитель xdg.mimeApps.enable, поэтому владение здесь, не в theme
 # (ARCH-5 — появится второй потребитель, перенести в общее место).
+# xdg.configFile."mimeapps.list".force — ПРОВЕРЕНО на машине: до этой фичи
+# ~/.config/mimeapps.list уже существовал на диске (создан не Nix'ом — GTK/
+# приложениями при ручном выборе "открыть с помощью"), home-manager по
+# умолчанию отказывается перезаписывать файлы вне своего управления.
 # Зависимости: —
 _: {
   flake.modules.homeManager.documents-zathura = { pkgs, ... }: {
@@ -19,5 +23,6 @@ _: {
       enable = true;
       defaultApplications."application/pdf" = [ "org.pwmt.zathura.desktop" ];
     };
+    xdg.configFile."mimeapps.list".force = true;
   };
 }
