@@ -38,6 +38,7 @@ in
       hm.bluetooth-manager-blueman
       hm.terminal-foot
       hm.file-manager-yazi
+      hm.effects-profile
       hm.theme
     ];
   };

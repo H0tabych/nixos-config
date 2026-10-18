@@ -551,7 +551,8 @@ nixos-config/
 │   │                         notifier-mako  launcher-rofi  lockscreen-hyprlock
 │   │                         idle-hypridle  wallpaper-hyprpaper  screenshot-grim
 │   │                         clipboard-cliphist  polkit-agent-hyprpolkitagent
-│   │                         osd-swayosd  automount-agent-udiskie  theme
+│   │                         osd-swayosd  automount-agent-udiskie  effects-profile
+│   │                         theme
 │   ├── shell/                shell-zsh  vcs-tools  env-manager-direnv  user-dirs
 │   │                         prompt-starship  terminal-foot  file-manager-yazi
 │   │                         dotfiles-link  _dotfiles-link-machine.nix
@@ -603,7 +604,7 @@ dotfiles/                     (отдельный репозиторий)
 | `base` | класс хоста | nix-settings, locale-keyboard, users, hm, fonts, host-facts, sops, ssh, firewall, hardening, network-manager, shell-zsh, env-manager-direnv, vcs-tools, prompt-starship, dotfiles-link | — |
 | `laptop` | класс хоста | power, sleep, layout, swap, maintenance, firmware, audio, bluetooth, automount | — |
 | `user-base` | базис пользователя (ADR-32) | — | dotfiles-link, user-dirs, prompt-starship |
-| `desktop` | capability | session-hyprland, display-manager-sddm, bar-waybar, lockscreen-hyprlock, idle-hypridle, polkit-agent-hyprpolkitagent, osd-swayosd, bluetooth-manager-blueman, theme | notifier-mako, launcher-rofi, wallpaper-hyprpaper, screenshot-grim, clipboard-cliphist, polkit-agent-hyprpolkitagent, osd-swayosd, automount-agent-udiskie, bluetooth-manager-blueman, terminal-foot, file-manager-yazi, theme |
+| `desktop` | capability | session-hyprland, display-manager-sddm, bar-waybar, lockscreen-hyprlock, idle-hypridle, polkit-agent-hyprpolkitagent, osd-swayosd, bluetooth-manager-blueman, theme | notifier-mako, launcher-rofi, wallpaper-hyprpaper, screenshot-grim, clipboard-cliphist, polkit-agent-hyprpolkitagent, osd-swayosd, automount-agent-udiskie, bluetooth-manager-blueman, terminal-foot, file-manager-yazi, effects-profile, theme |
 | `development` | capability | editor-neovim | lsp-global, databases, [api-tools] |
 | `containers` | capability | containers-docker | containers-docker |
 | `office` | capability | — | office-suite-libreoffice, mail-calendar-thunderbird, documents-zathura, communication-telegram |
