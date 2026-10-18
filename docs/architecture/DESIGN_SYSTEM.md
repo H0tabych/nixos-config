@@ -802,7 +802,7 @@ end
 | Программа | Слот | Уровень | Способ | Статус |
 |---|---|---|---|---|
 | Firefox | `browser` | L4 | следует системной тёмной схеме; позже MAY — `userChrome.css` из палитры (HM-часть фичи `browser-firefox`; Firefox вне реестра dotfiles — DOT-2) | этап 1 — штатно |
-| Telegram Desktop | `communication` | L4 | `glass-tide-<вариант>.tdesktop-theme` из генератора, импорт один раз | файл генерируется (R7.1); `ПРОВЕРИТЬ` ключи темы и импорт вживую (Приложение I.6, M5) |
+| Telegram Desktop | `communication` | L4 | `glass-tide-<вариант>.tdesktop-theme` из генератора, импорт один раз | готово (R7.1): импортирована на машине, ключи палитры сверены и совпадают (M5) |
 | mpv | `video-player` | L4 | `include=` `theme.conf`: шрифт UI для OSD, цвета OSD из ролей | — |
 | MangoHud | `overlay` | L4 | `MangoHud.conf` из шаблона: `background_color` = `base`, `background_alpha=0.6`, `round_corners=8`, `text_color` = `text`, шрифт моно | — |
 | Steam | `game-platform` | L4 | не темизируется (DSN-EXC-7) | — |
