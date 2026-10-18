@@ -788,7 +788,8 @@ end
 - **yazi:** генерируемый `theme.toml` — выбор `surface2`, курсор `accent`, без собственного фона. Секции 26.5.6 проверены по `yazi-config/preset/theme-dark.toml`: `[mgr]` (`cwd`, `marker_*`, `count_*`, `border_style`), `[indicator]` (`current`, `parent`, `preview`), `[status]`, `[mode]`, `[tabs]`, `[which]`, `[input]`, `[cmp]`, `[tasks]`, `[help]`, `[notify]`, `[filetype]`, `[icon]`; метки выбранных — `[mgr] marker_selected` в `accent`. **`[indicator] current` без `bg`** (ПРОВЕРЕНО на машине, R6.9: `bg = surface2` рисовал тёмный полукруг поверх значка текущей строки, конфликтуя со штатной светлой подсветкой строки под курсором у `mgr.hovered`) — секция в шаблоне не задаётся, yazi применяет собственное умолчание.
 - **btop** (R6.12): `theme_background = false` + тема из генератора (`btop-theme.theme.tmpl`); ПРОВЕРЕНО `btop --default-config` (btop 1.4.7, nixpkgs) — регистр `false`, не `False`.
 - **lazygit** (R6.12): `gui.theme.activeBorderColor`/`selectedLineBgColor` из ролей (`lazygit-config.yml.tmpl`).
-- **Прочие TUI** (при появлении): fzf — `--color` из ролей с `bg:-1`; bat/delta — тема `ansi`.
+- **fzf** (R6.13): `--color` из ролей, `bg:-1` (прозрачность терминала) — `fzf-theme.zsh.tmpl`, подключается статикой `fzf/config.zsh`.
+- **Прочие TUI** (при появлении): bat/delta — тема `ansi`.
 
 ### P.3.6 GTK, Qt, шрифты, курсор, иконки (Nix, фича `theme`)
 
