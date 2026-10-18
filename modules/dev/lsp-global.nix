@@ -7,6 +7,9 @@
 # «No C compiler found»; редактору он нужен независимо от проектного
 # тулчейна (DEV-2 про тулчейны относится к сборке проекта, не к самому
 # редактору), поэтому `gcc` — здесь, а не в шаблонах cpp/rust.
+# branch = "main" nvim-treesitter (ПРОВЕРЕНО живьём на Neovim 0.12: branch
+# "master" несовместима с ядром 0.12+) вызывает внешний бинарь `tree-sitter
+# build`/`generate`, а не только cc — добавлен пакет tree-sitter рядом с gcc.
 # Зависимости: —
 _: {
   flake.modules.homeManager.lsp-global = { pkgs, ... }: {
@@ -28,6 +31,7 @@ _: {
       pkgs.lldb
       # компиляция грамматик treesitter в редакторе (R6.12)
       pkgs.gcc
+      pkgs.tree-sitter
     ];
   };
 }

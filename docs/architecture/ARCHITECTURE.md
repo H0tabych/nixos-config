@@ -787,7 +787,7 @@ Python, SQL, C/C++, Rust.
 - ml-cuda: `cudaPackages` для sm_75, только кэшируемые бинарные сборки.
 - Запасные LSP глобально: nil или nixd, lua-language-server, bash-language-server, pyright, ruff, clangd, sqls/sqlfluff; **`rust-analyzer` только из проектного окружения** (DEV-4).
 - Форматтеры: nixfmt (единственный для Nix), stylua, shfmt. Отладка: debugpy, lldb/codelldb.
-- Парсеры treesitter: rust, c, cpp, python, sql, nix, lua, bash, toml, yaml, json, markdown.
+- Парсеры treesitter: rust, c, cpp, python, sql, nix, lua, bash, toml, yaml, json, markdown, markdown_inline (техническая зависимость markdown — инъекция инлайн-текста, не отдельный язык).
 
 ### A.6 Особенности реализации
 
