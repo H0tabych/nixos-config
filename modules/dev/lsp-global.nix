@@ -2,6 +2,11 @@
 # Контракт: слот editor → lsp-global (ARCHITECTURE.md §6, контракт слота editor):
 # запасные LSP, форматтеры и отладчики глобально (DEV-1, DEV-5), полный состав —
 # Приложение A.5. `rust-analyzer` НЕ входит — только из проектного окружения (DEV-4).
+# R6.12, ПРОВЕРЕНО headless-прогоном Neovim: nvim-treesitter компилирует
+# парсеры (`:TSUpdate`) вызовом `cc`/`gcc` в PATH — без компилятора падает с
+# «No C compiler found»; редактору он нужен независимо от проектного
+# тулчейна (DEV-2 про тулчейны относится к сборке проекта, не к самому
+# редактору), поэтому `gcc` — здесь, а не в шаблонах cpp/rust.
 # Зависимости: —
 _: {
   flake.modules.homeManager.lsp-global = { pkgs, ... }: {
@@ -21,6 +26,8 @@ _: {
       # отладка (DEV-5)
       pkgs.python3Packages.debugpy
       pkgs.lldb
+      # компиляция грамматик treesitter в редакторе (R6.12)
+      pkgs.gcc
     ];
   };
 }

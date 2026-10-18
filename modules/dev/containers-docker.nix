@@ -33,6 +33,9 @@ in
     };
 
   flake.modules.homeManager.containers-docker = { pkgs, ... }: {
-    home.packages = [ pkgs.docker-compose ];
+    home.packages = [
+      pkgs.docker-compose
+      pkgs.lazydocker
+    ];
   };
 }

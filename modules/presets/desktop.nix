@@ -1,9 +1,9 @@
 # Фича: desktop · Слот: — · Домен: presets · Классы: N+H · Для: пользователей с capability desktop
 # Контракт: STR-7 (пресет — только imports), R4.3. Реализации слотов — по
-# Приложению A.3 Архитектуры. terminal-foot/file-manager-yazi живут в домене
-# shell (ARCHITECTURE.md §6: это командная строка пользователя), но подключаются
-# именно отсюда — их владелец по использованию - capability desktop (STRUCTURE.md,
-# «правило выбора домена»).
+# Приложению A.3 Архитектуры. terminal-foot/file-manager-yazi/btop живут в
+# домене shell (ARCHITECTURE.md §6: это командная строка пользователя), но
+# подключаются именно отсюда — их владелец по использованию - capability
+# desktop (STRUCTURE.md, «правило выбора домена»).
 # Зависимости: —
 { config, ... }:
 let
@@ -38,6 +38,7 @@ in
       hm.bluetooth-manager-blueman
       hm.terminal-foot
       hm.file-manager-yazi
+      hm.btop
       hm.effects-profile
       hm.theme
     ];
