@@ -121,6 +121,11 @@ _: {
             export XCURSOR_THEME=Bibata-Modern-Ice
             export XCURSOR_SIZE=24
             export QT_QPA_PLATFORMTHEME=qt5ct
+            # R7.1, DSN-CMP-18: без этого LibreOffice под Hyprland не находит
+            # распознанное окружение рабочего стола и откатывается на VCL-плагин
+            # gen (светлая не GTK-тема) вместо gtk3 — ПРОВЕРЕНО на машине
+            # (скриншот LibreOffice Calc со светлым интерфейсом до правки).
+            export SAL_USE_VCLPLUGIN=gtk3
           '';
         }
         (lib.mkIf proxyMode {
