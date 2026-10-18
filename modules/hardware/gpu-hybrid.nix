@@ -50,9 +50,19 @@ _: {
       # HDMI-A-1/DP-1 на этом хосте принадлежат дискретной
       # (docs/hosts/sgms-laptop.md §13) — то есть список динамический и требует
       # проверки с подключённым монитором (ROADMAP R5.7).
+      #
+      # *-render — те же шины, но минор render-нода (renderD12x), а не card
+      # (режиссирования/KMS). ПРОВЕРЕНО на машине (R7.2): vaGetDriverNames()
+      # (авто-определение драйвера libva) падает на card-ноде ("operation
+      # failed") и mpv молча уходит на программное декодирование, а на
+      # renderD128/129 определяется верно (iHD/nvidia по шине). Видеодекод —
+      # потребитель именно render-нода (mpv/theme, APP-3), KMS — card-нода
+      # (композитор, выше); отдельный симлинк, а не замена igpu/dgpu.
       services.udev.extraRules = ''
         SUBSYSTEM=="drm", KERNEL=="card[0-9]*", KERNELS=="${gpu.integratedBusId}", SYMLINK+="dri/by-host/igpu"
         SUBSYSTEM=="drm", KERNEL=="card[0-9]*", KERNELS=="${gpu.discreteBusId}", SYMLINK+="dri/by-host/dgpu"
+        SUBSYSTEM=="drm", KERNEL=="renderD[0-9]*", KERNELS=="${gpu.integratedBusId}", SYMLINK+="dri/by-host/igpu-render"
+        SUBSYSTEM=="drm", KERNEL=="renderD[0-9]*", KERNELS=="${gpu.discreteBusId}", SYMLINK+="dri/by-host/dgpu-render"
       '';
 
       hardware.nvidia.prime = {
