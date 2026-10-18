@@ -81,7 +81,7 @@
 |---|---|---|---|---|---|---|
 | **L0 Фон** | обои рабочего стола | изображение варианта | — | — | — | — |
 | **L1 Стекло панели** | капсулы панели | `base` | 0.80 | да | ободок 1 px | нет |
-| **L2 Стекло окна** | окна терминала (и всё, что внутри: шелл, редактор, файловый менеджер, TUI) | `base` | 0.88 | да | рамка окна (DSN-SHP-3) | да |
+| **L2 Стекло окна** | окна терминала (и всё, что внутри: шелл, редактор, файловый менеджер, TUI) | `base` | 0.85 | да | рамка окна (DSN-SHP-3) | да |
 | **L3 Временные** | лаунчер, уведомления, OSD, меню питания, подсказки и выпадающие меню оболочки | `mantle` | 0.90 | да | ободок 1 px | да |
 | **L4 Сплошные** | все GUI-окна с контентом, диалоги приложений | `base` / `surface0` | 1.0 | нет | рамка окна | да |
 | **L5 Критические** | критические уведомления, запрос пароля и полномочий, подтверждение разрушительных действий | `mantle` | 1.0 | нет | 2 px `error` или `accent` | да |
@@ -381,9 +381,11 @@
 | `success` | `#B5DB86` | 11.30 | 76 | 9.10 | 73 | 7.62 | 9.70 | норма, подключено |
 | `warning` | `#F0B86E` | 9.91 | 69 | 7.98 | 66 | 6.68 | 8.51 | внимание |
 | `error` | `#F0817F` | 6.85 | 51 | 5.52 | 48 | 4.62 | 5.88 | ошибка, критично |
-| `info` | `#7AAEEA` | 7.62 | 55 | 6.14 | 53 | 5.14 | 6.55 | информация |
+| `info` | `#91A4ED` | 7.34 | 54 | 5.91 | 52 | 4.95 | 6.31 | информация |
 | `special` | `#B49AE8` | 7.34 | 54 | 5.91 | 51 | 4.95 | 6.30 | режимы, метрики |
-| `teal` | `#6CCFCB` | 9.60 | 67 | 7.73 | 64 | — | — | `ansi.regular[6]` |
+| `teal` | `#6CD09E` | 9.38 | 63 | 7.55 | 60 | — | — | `ansi.regular[6]` |
+
+> `info`/`teal` пересчитаны 2026-10-18 (живая проверка: оба оттенка — 212°/178° — лежали в 8–26° от `base` 204° и от `variant.accent` обоих вариантов 154°/192°, из-за чего `Function`/`Type` в редакторе сливались с фоном и друг с другом). Новые оттенки — 228°/150°, контраст к `base` не ниже прежнего. Подробности и формула разнесения — `theme/palette.toml` dotfiles, комментарий над `[semantic]`.
 
 `on_accent` = `crust`: на `accent` A — 11.30, B — 10.01, `accent_warm` — 10.05, `success` — 12.50, `warning` — 10.96, `error` — 7.58, `info` — 8.43, `special` — 8.12. `text` на `selection` — 8.71. `accent` на `surface0` — 9.07 / 8.03.
 
@@ -411,7 +413,7 @@
 | B | весь экран | `#CCB084` (закат) | `#FEEA84` | 0.68 (резко — 0.76) | 0.85 |
 | B | полоса панели | `#102738` | `#108590` | 0.40 (резко — 0.48) | — |
 
-Вывод: основной текст читаем уже при `α ≈ 0.7`, ограничивает приглушённый текст — отсюда два порога DSN-MAT-2 (0.78 и 0.85) и значения уровней 0.80 / 0.88 / 0.90 с запасом. Контрольные точки хранятся в `palette.toml` (S.3) и пересчитываются при смене обоев.
+Вывод: основной текст читаем уже при `α ≈ 0.7`, ограничивает приглушённый текст — отсюда два порога DSN-MAT-2 (0.78 и 0.85). Значения уровней: `bar` 0.82 (с запасом над 0.78 — правка после измерения на реальных обоях, см. комментарий в `palette.toml`), `popup` 0.90 (с запасом), `window` 0.85 — ровно на полу 0.85 для `overlay1`/комментариев (опущен с 0.88 2026-10-18: эффект стекла был почти не виден при более высокой тонировке; запаса над полом больше нет, DSN-COL-4 проверяется `gen.py --check` при любой дальнейшей правке нейтралей или нижних пределов). Контрольные точки хранятся в `palette.toml` (S.3) и пересчитываются при смене обоев.
 
 ## V.4 Форма, типографика, движение (значения v1.0)
 
@@ -424,7 +426,7 @@
 | `radius.window` / `control` / `pill` | 12 / 8 / 999 px |
 | `gap.inner` / `gap.outer` (видимые) | 12 / 12 px (у композитора — 6 на сторону и 12) |
 | `pad.term` / `notify` / `launcher` / `pill` / `item` | 16×12 / 12×16 / 12 / 8 / 8×12 px |
-| `border.window` / `border.rim` / `rim.alpha` | 2 px / 1 px / 0.08 |
+| `border.window` / `border.rim` / `rim.alpha` | 2 px / 1 px / 0.10 (было 0.08, поднято 2026-10-18 до верхней границы DSN-MAT-6 — чётче видна граница стекла) |
 | `shadow.range` / `power` / `alpha.active` / `alpha.inactive` | 20 / 3 / 0.55 / 0.30 |
 | `dim.inactive` | 0.08 |
 | `bar.width` / `bar.margin` | 44 px / 12 0 12 8 px |
@@ -706,7 +708,7 @@ end
   font=JetBrains Mono:size=11, Symbols Nerd Font Mono:size=11
   pad=16x12 center
   [colors-dark]
-  alpha=0.88
+  alpha=0.85
   background=0e1a22
   foreground=dce7ec
   selection-foreground=dce7ec
@@ -784,7 +786,7 @@ end
   detect_folders = []
   ```
   oh-my-zsh остаётся только для плагинов; подсказки автодополнения — цвет терминала 8 (`overlay1`).
-- **Neovim:** `nvim/colors/glass-tide.lua` читает сгенерированную таблицу; `Normal`, `NormalNC`, `SignColumn`, `EndOfBuffer` — `bg = NONE`; `NormalFloat`, `FloatBorder`, `Pmenu` — `surface0`; `CursorLine` — `surface1`; `Visual` — `surface2`; `Comment` — `overlay1`; диагностика — семантика и знаки; строка состояния — капсула режима (`accent`/`warning`/`special`). Синтаксис кода (R6.13, добавлено после живой проверки — treesitter/regex подсветка без этого брала цвета встроенной темы Neovim, не палитру): `Keyword`/`Statement` — `accent`; `String` — `success`; `Number`/`Boolean` — `accent_warm`; `Function` — `info`; `Type` — `teal`; `Constant`/`Special` — `special`; `Operator`/`Delimiter` — `subtext1`; `PreProc`/`Todo` — `warning`; `Identifier` — `text` (без тонировки). Classic-группы, не `@`-префиксные — `@capture` линкуются на них по умолчанию (ПРОВЕРЕНО `nvim_get_hl`).
+- **Neovim:** `nvim/colors/glass-tide.lua` читает сгенерированную таблицу; `Normal`, `NormalNC`, `SignColumn`, `EndOfBuffer` — `bg = NONE`; `NormalFloat`, `FloatBorder`, `Pmenu` — `surface0`; `CursorLine` — `surface1`; `Visual` — `surface2`; `Comment` — `overlay1`; диагностика — семантика и знаки; строка состояния — капсула режима (`accent`/`warning`/`special`). Синтаксис кода (R6.13, добавлено после живой проверки — treesitter/regex подсветка без этого брала цвета встроенной темы Neovim, не палитру; переразведено 2026-10-18 — живая проверка показала, что `accent`/`teal`/`info` сидели в одном сине-циановом семействе с `base`, `Keyword` и `Type` сливались с фоном): `Keyword`/`Statement` — `special`; `String` — `success`; `Number`/`Boolean`/`Constant` — `accent_warm`; `Function` — `info`; `Type` — `teal`; `Special` — `special`; `Operator`/`Delimiter` — `subtext1`; `PreProc`/`Todo` — `warning`; `Identifier` — `text` (без тонировки). Ни одна из этих ролей не завязана на `accent` — иначе подсветка кода менялась бы при смене варианта обоев (DSN-COL-9). Classic-группы, не `@`-префиксные — `@capture` линкуются на них по умолчанию (ПРОВЕРЕНО `nvim_get_hl`).
 - **yazi:** генерируемый `theme.toml` — выбор `surface2`, курсор `accent`, без собственного фона. Секции 26.5.6 проверены по `yazi-config/preset/theme-dark.toml`: `[mgr]` (`cwd`, `marker_*`, `count_*`, `border_style`), `[indicator]` (`current`, `parent`, `preview`), `[status]`, `[mode]`, `[tabs]`, `[which]`, `[input]`, `[cmp]`, `[tasks]`, `[help]`, `[notify]`, `[filetype]`, `[icon]`; метки выбранных — `[mgr] marker_selected` в `accent`. **`[indicator] current` без `bg`** (ПРОВЕРЕНО на машине, R6.9: `bg = surface2` рисовал тёмный полукруг поверх значка текущей строки, конфликтуя со штатной светлой подсветкой строки под курсором у `mgr.hovered`) — секция в шаблоне не задаётся, yazi применяет собственное умолчание.
 - **btop** (R6.12): `theme_background = false` + тема из генератора (`btop-theme.theme.tmpl`); ПРОВЕРЕНО `btop --default-config` (btop 1.4.7, nixpkgs) — регистр `false`, не `False`.
 - **lazygit** (R6.12): `gui.theme.activeBorderColor`/`selectedLineBgColor` из ролей (`lazygit-config.yml.tmpl`).
