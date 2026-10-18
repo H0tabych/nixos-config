@@ -803,7 +803,7 @@ end
 |---|---|---|---|---|
 | Firefox | `browser` | L4 | следует системной тёмной схеме; позже MAY — `userChrome.css` из палитры (HM-часть фичи `browser-firefox`; Firefox вне реестра dotfiles — DOT-2) | этап 1 — штатно |
 | Telegram Desktop | `communication` | L4 | `glass-tide-<вариант>.tdesktop-theme` из генератора, импорт один раз | готово (R7.1): импортирована на машине, ключи палитры сверены и совпадают (M5) |
-| mpv | `video-player` | L4 | `include=` `theme.conf`: шрифт UI для OSD, цвета OSD из ролей | готово (R7.2): `mpv/theme.conf` из генератора (`accent`, `mantle` с альфой 0.90), подключён `include=` в `mpv.conf`; цвета — визуально `ПРОВЕРИТЬ` вживую |
+| mpv | `video-player` | L4 | `include=` `theme.conf`: шрифт UI для OSD, цвета OSD из ролей | готово (R7.2): `mpv/theme.conf` из генератора (`accent`, `mantle` с альфой 0.90), подключён `include=` в `mpv.conf`; `osd-border-style=background-box` — без него плашки не видно (ПРОВЕРЕНО на машине). Визуально подтверждено в живой Wayland-сессии: непрозрачная плашка `mantle`, текст `accent` |
 | MangoHud | `overlay` | L4 | `MangoHud.conf` из шаблона: `background_color` = `base`, `background_alpha=0.6`, `round_corners=8`, `text_color` = `text`, шрифт моно | — |
 | Steam | `game-platform` | L4 | не темизируется (DSN-EXC-7) | — |
 | blueman, swappy | `bluetooth-manager`, `screenshot` | L4 | через GTK | — |
