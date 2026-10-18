@@ -85,6 +85,11 @@ in
         enable = true;
         wayland.enable = true;
         theme = "${themed}/share/sddm/themes/sddm-astronaut-theme";
+        # Main.qml темы импортирует QtMultimedia (видео-фон); без модуля в
+        # QML2_IMPORT_PATH greeter откатывается на встроенную тему (проверено
+        # по журналу: "module QtMultimedia is not installed" → "Fallback to
+        # embedded theme").
+        extraPackages = [ pkgs.qt6.qtmultimedia ];
       };
     };
 }
