@@ -802,13 +802,13 @@ end
 | Программа | Слот | Уровень | Способ | Статус |
 |---|---|---|---|---|
 | Firefox | `browser` | L4 | следует системной тёмной схеме; позже MAY — `userChrome.css` из палитры (HM-часть фичи `browser-firefox`; Firefox вне реестра dotfiles — DOT-2) | этап 1 — штатно |
-| Telegram Desktop | `communication` | L4 | `glass-tide-<вариант>.tdesktop-theme` из генератора, импорт один раз | `ПРОВЕРИТЬ` ключи темы (Приложение I.6, M5) |
+| Telegram Desktop | `communication` | L4 | `glass-tide-<вариант>.tdesktop-theme` из генератора, импорт один раз | файл генерируется (R7.1); `ПРОВЕРИТЬ` ключи темы и импорт вживую (Приложение I.6, M5) |
 | mpv | `video-player` | L4 | `include=` `theme.conf`: шрифт UI для OSD, цвета OSD из ролей | — |
 | MangoHud | `overlay` | L4 | `MangoHud.conf` из шаблона: `background_color` = `base`, `background_alpha=0.6`, `round_corners=8`, `text_color` = `text`, шрифт моно | — |
 | Steam | `game-platform` | L4 | не темизируется (DSN-EXC-7) | — |
 | blueman, swappy | `bluetooth-manager`, `screenshot` | L4 | через GTK | — |
 | hyprpolkitagent | `polkit-agent` | L5 | Qt/QML — `ПРОВЕРИТЬ`, подхватывает ли qt6ct (Приложение I.6, M6) | — |
-| LibreOffice, Thunderbird, просмотрщик PDF | `office-suite`, `mail-calendar`, `documents` | L4 | при добавлении: тёмный интерфейс приложения, страница документа без перекраски, PDF — режим перекраски по клавише | не установлены |
+| LibreOffice, Thunderbird, zathura | `office-suite`, `mail-calendar`, `documents` | L4 | LibreOffice/Thunderbird — системная тёмная тема GTK (theme.nix, R6.6); zathura — `zathura/zathurarc` из генератора, `recolor` по умолчанию выключен (страница как в документе), клавиша `R` переключает (DSN-CMP-18) | установлены (R7.1); `ПРОВЕРИТЬ` вживую |
 
 ## P.4 Новые записи реестра dotfiles (DOT-2)
 
