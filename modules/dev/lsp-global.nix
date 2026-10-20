@@ -10,6 +10,10 @@
 # branch = "main" nvim-treesitter (ПРОВЕРЕНО живьём на Neovim 0.12: branch
 # "master" несовместима с ядром 0.12+) вызывает внешний бинарь `tree-sitter
 # build`/`generate`, а не только cc — добавлен пакет tree-sitter рядом с gcc.
+# `uv` — запасной глобально по тому же принципу, что LSP (DEV-4): версия не
+# привязана жёстко к тулчейну проекта (в отличие от rust-analyzer), а GUI-IDE
+# (PyCharm) запускается не из шелла и не видит project-direnv вообще — нужен
+# в PATH безусловно.
 # Зависимости: —
 _: {
   flake.modules.homeManager.lsp-global = { pkgs, ... }: {
@@ -22,6 +26,8 @@ _: {
       pkgs.lua-language-server
       pkgs.bash-language-server
       pkgs.sqlfluff
+      # запасной для GUI-IDE без direnv (R6.x, см. выше)
+      pkgs.uv
       # форматтеры (DEV-8: тот же nixfmt, что и в core/treefmt.nix)
       pkgs.nixfmt
       pkgs.stylua
