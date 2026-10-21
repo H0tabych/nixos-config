@@ -677,21 +677,23 @@ end
   "layer": "top", "position": "left", "width": 44, "margin": "12 0 12 8", "spacing": 6,
   "modules-left":   ["custom/launcher", "hyprland/workspaces"],
   "modules-center": ["privacy", "custom/dnd", "idle_inhibitor", "mpris"],
-  "modules-right":  ["hyprland/language", "custom/tunnel", "network", "pulseaudio", "battery", "group/load",
-                     "group/more", "clock", "custom/power"],
+  "modules-right":  ["group/net-status", "group/sound-light", "group/load", "group/more", "clock", "custom/power"],
+  // Три смысловые пары, каждая в одной капсуле (CSS-id = имя после "group/"):
+  "group/net-status":  { "orientation": "inherit", "modules": ["hyprland/language", "custom/tunnel", "network", "battery"] },
+  "group/sound-light": { "orientation": "inherit", "modules": ["backlight", "pulseaudio"] },
+  "group/load":        { "orientation": "inherit", "modules": ["cpu", "memory"] },   // ЦП и память (запрос 2026-10-21)
   "hyprland/language": { "format-en": "EN", "format-ru": "RU" },          // ключ — shortDescription раскладки; значения — I.6, M4
-  "battery": { "states": { "warning": 25, "critical": 10 }, "format": "{icon}\n{capacity}" },
-  "group/load": { "orientation": "inherit", "modules": ["cpu", "memory"] },   // ЦП и память — одна капсула (зона 3)
+  "battery": { "states": { "warning": 25, "critical": 10 }, "format": "{icon}" },
   "cpu":    { "interval": 3,  "format": "<span size='large'>󰻠</span>\n{usage}",      "states": { "warning": 70, "critical": 90 } },
   "memory": { "interval": 10, "format": "<span size='large'>󰍛</span>\n{percentage}", "states": { "warning": 70, "critical": 90 },
               "tooltip-format": "{used:0.1f} / {total:0.1f} ГиБ" },          // значки U+F0EE0 / U+F035B крупнее цифр разметкой Pango (CSS font-size растянул бы и число); уровни — DSN-LAY-5 (исключение: без капсулы error)
   "clock": { "format": "{:%H\n%M}", "tooltip-format": "<tt>{calendar}</tt>" },
   "group/more": { "orientation": "inherit", "drawer": { "transition-duration": 250 },
-                  "modules": ["custom/more", "backlight", "bluetooth", "tray"] }
+                  "modules": ["custom/more", "tray"] }   // яркость и звук — в sound-light, всегда видны; Bluetooth без отдельного модуля — дублировал значок трея
 }
 ```
 
-`style.css` не содержит цветов и имён шрифтов: `@import url("theme.css");` — `theme.css` в каталоге панели есть относительный симлинк на файл профиля (P.3.1); абсолютный путь в портативный конфиг не попадает (DOT-1). `ПРОВЕРИТЬ`: GTK3 разрешает относительный `@import` через симлинк (Приложение I.6, M3). Капсула: `background: alpha(@base, @…)` — в GTK3 CSS альфа токеном не задаётся, поэтому генератор пишет готовые `@define-color glass_bar …;` с альфой профиля, а `style.css` использует `background-color: @glass_bar; border: 1px solid @glass_rim; border-radius: 999px; padding: 8px 0;`. Размытие — правилом слоя композитора, не CSS. `custom/tunnel` и `custom/dnd` — скрипты в `waybar/scripts/` (DESK-9), вывод JSON с классом состояния.
+`style.css` не содержит цветов и имён шрифтов: `@import url("theme.css");` — `theme.css` в каталоге панели есть относительный симлинк на файл профиля (P.3.1); абсолютный путь в портативный конфиг не попадает (DOT-1). `ПРОВЕРИТЬ`: GTK3 разрешает относительный `@import` через симлинк (Приложение I.6, M3). Капсула: `background: alpha(@base, @…)` — в GTK3 CSS альфа токеном не задаётся, поэтому генератор пишет готовые `@define-color glass_bar …;` с альфой профиля в `theme.css`; там же генератор задаёт `window#waybar { border-radius: 12px; }` (`radius.window` — то же значение, что у окон Hyprland, M25), а `style.css` — `background-color: @glass_bar; border: 1px solid @glass_rim; padding: 4px 0;`. Размытие — правилом слоя композитора, не CSS. `custom/tunnel` и `custom/dnd` — скрипты в `waybar/scripts/` (DESK-9), вывод JSON с классом состояния.
 
 ### P.3.3 Лаунчер, уведомления, OSD, меню питания
 
