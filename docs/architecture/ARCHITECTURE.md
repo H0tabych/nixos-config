@@ -772,6 +772,7 @@ let n = config.flake.modules.nixos; in {
 | `game-platform` / `compat-layer` / `game-optimizer` / `overlay` | Steam / Proton-GE / gamemode + gamescope / MangoHud |
 | `inference-service` | Ollama (CUDA) |
 | `databases` | DBeaver, pgcli |
+| `api-tools` | Postman |
 
 ### A.4 Начальный реестр dotfiles
 
