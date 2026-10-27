@@ -19,5 +19,9 @@ _: {
       path = ../../templates/sql;
       description = "sql: postgresql + sqlfluff + pgcli (A.5)";
     };
+    ml-cuda = {
+      path = ../../templates/ml-cuda;
+      description = "ml-cuda: cudaPackages для sm_75, только кэшируемые бинарные сборки (A.5)";
+    };
   };
 }

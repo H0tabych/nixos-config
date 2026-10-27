@@ -1,6 +1,6 @@
 # Фича: sgms-laptop · Слот: — · Домен: hosts · Классы: N · Для: sgm
 # Контракт: ARCH-4, HOST-1, STR-8. Композиция хоста + факты my.host.* (без пакетов и сервисов).
-# Зависимости: presets base/laptop/desktop/development/media/gaming/containers/tunnel; gpu-*, vpn-client
+# Зависимости: presets base/laptop/desktop/development/media/gaming/containers/ml/tunnel; gpu-*, vpn-client
 # подключаются прямо из хоста (HOST-3, персональная фича, не для класса laptop);
 # machines/sgms-laptop/hardware.nix — исключение STR-9.
 { config, inputs, ... }:
@@ -22,6 +22,7 @@ in
       n.media
       n.gaming
       n.containers
+      n.ml
       n.gpu-integrated
       n.gpu-discrete
       n.gpu-hybrid
@@ -88,6 +89,13 @@ in
       # ПРОВЕРИТЬ: значение ниже — заполняется после первого прогона R5.1.
       # resume.offset = null;
       resume.offset = 15787436;
+    };
+
+    my.ai.inference = {
+      # 5 минут простоя — компромисс между повторной загрузкой модели (FIM
+      # ждёт первый токен) и временем до освобождения VRAM под игры/проектные
+      # сборки (AI-RES-1, AI-RES-5). Пересмотреть после замера p95 (AI-A2).
+      keepAlive = "5m";
     };
 
     my.tunnel = {

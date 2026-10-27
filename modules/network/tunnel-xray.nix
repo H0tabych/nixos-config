@@ -6,6 +6,9 @@
 # Прокси-переменные графической сессии (NET-10, DOT-7) эта фича НЕ доставляет:
 # env-файл менеджера сессий принадлежит слоту session (session-hyprland), иначе
 # замена композитора (DESK-10) потребовала бы правки сетевой фичи (ARCH-16, SLOT-3).
+# Исключение (ADR-39, временное до M2): nix-daemon.service — не часть сессии и
+# не слот, подменять его при смене композитора не нужно, поэтому его прокси-
+# переменные доставляет эта же фича (_tunnel-xray-nix-proxy.nix, STR-6).
 # Постквантовая подпись (mldsa65Verify) не заполняется: выход её пока не
 # выпускает (VPN-SRV-3 не выполнен на сервере) — это отступление, а не исключение
 # по VPN-CLI-3 (ядро xray-core проверку поддерживает); запись со сроком
@@ -40,6 +43,7 @@ in
       pkg = pkgs.xray;
       ph = name: config.sops.placeholder.${name};
       policy = import ./_tunnel-xray-policy.nix { inherit lib; };
+      nixProxy = import ./_tunnel-xray-nix-proxy.nix { inherit lib; };
       routes = import ./_tunnel-xray-routes.nix { inherit lib pkgs; };
 
       queryStrategy = if cfg.ipv6 == "blocked" then "UseIPv4" else "UseIP";
@@ -121,6 +125,14 @@ in
             + "пропадала). Условия снятия — docs/runbook/tunnel.md, раздел «Переход на M2».";
         }
       ];
+
+      # ADR-39: исключение из NET-10/VPN-MOD-4, см. комментарий в шапке файла.
+      systemd.services.nix-daemon.environment = lib.mkIf (mode == "m1") (
+        nixProxy.mkEnv {
+          inherit (cfg.local.http) address port;
+          inherit (cfg.local) noProxy;
+        }
+      );
 
       sops.secrets = {
         "tunnel.endpoint".sopsFile = secretsFile "common.yaml";
