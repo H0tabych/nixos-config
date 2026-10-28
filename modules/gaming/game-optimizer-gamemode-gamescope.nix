@@ -4,6 +4,14 @@
 # запускаемой игре (ARCHITECTURE.md §A.6: PRIME offload + nvidia-offload);
 # запуск игры через gamescope (или nvidia-offload из gpu-hybrid) — ручная
 # опция запуска в Steam/лаунчере, не предмет этой фичи (FEAT-6).
+# AI-A4/AI-RES-5 (AI_SUBSYSTEM.md): хук игры — единственный владелец здесь,
+# не в AI-фиче (FEAT-6). GameMode custom-start вызывает `inference-release`,
+# если команда есть; на хостах без ml-пресета команды нет — хук молча ничего
+# не делает (SHOULD, без assertion на AI-фичу, ARCH-3). Абсолютный путь, а не
+# поиск в PATH: апстрим nixpkgs (programs.gamemode) принудительно (mkForce)
+# обрезает PATH сервиса gamemoded до одного pkexec (security.wrapperDir),
+# поэтому `command -v inference-release` в этом PATH никогда не находится —
+# подтверждено живым запуском (журнал gamemoded, VRAM не освобождался).
 # Зависимости: gpu-hybrid (hardware.nvidia.prime.offload.enable) — только assertion.
 _: {
   flake.modules.nixos.game-optimizer-gamemode-gamescope =
@@ -16,7 +24,10 @@ _: {
         }
       ];
 
-      programs.gamemode.enable = true;
+      programs.gamemode = {
+        enable = true;
+        settings.custom.start = "[ -x /run/current-system/sw/bin/inference-release ] && /run/current-system/sw/bin/inference-release || true";
+      };
 
       programs.gamescope = {
         enable = true;
