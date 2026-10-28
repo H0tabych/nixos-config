@@ -4,6 +4,10 @@
 # «синтаксис проверить сборкой»); API inference-release (/api/ps, keep_alive) —
 # ПРОВЕРИТЬ живым вызовом (не подтверждается статическим анализом). Pre-sleep/post-resume
 # (AI-INF-6) — первый такой паттерн в репозитории; порядок целей — ПРОВЕРИТЬ на хосте.
+# R8.4 (AI-CMP-4): адрес инференса и роль→модель пишутся в machine.d/ai-env —
+# тот же приём, что zsh-env у shell-zsh.nix (сама фича пишет файл в каталог,
+# которым владеет dotfiles-link, DOT-5/§2.4 AI_SUBSYSTEM.md); dotfiles читают
+# переменные, именам моделей там взяться нельзя (AI-ROLE-2, DOT-1/DOT-6).
 # Зависимости: host-facts (my.host.gpu.*), ai-facts (my.ai.*) — только чтение значений,
 # состав — пресетом ml (ARCH-3).
 { lib, ... }:
@@ -64,6 +68,16 @@
       };
 
       environment.systemPackages = [ inferenceRelease ];
+
+      # AI-CMP-4: адрес инференса и роль→модель — в machine.d, не в dotfiles.
+      systemd.tmpfiles.rules = lib.concatMap (user: [
+        "L+ /home/${user}/.config/machine.d/ai-env - - - - ${pkgs.writeText "ai-env" ''
+          # Сгенерировано Nix (inference-service-ollama, AI-CMP-4) — не редактируйте руками.
+          export AI_INFERENCE_URL="http://${inference.host}:${toString inference.port}"
+          export AI_MODEL_LOCAL_FAST="${roles.local-fast or ""}"
+          export AI_MODEL_LOCAL_CHAT="${roles.local-chat or ""}"
+        ''}"
+      ]) config.my.host.users;
 
       # AI-INF-6: выгрузка до сна, перезапуск после — известный отказ Ollama
       # (после resume вычислительная библиотека теряет устройство GPU).
