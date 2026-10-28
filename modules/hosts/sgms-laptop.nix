@@ -98,6 +98,22 @@ in
       keepAlive = "5m";
     };
 
+    my.ai.gateway.cloudRoles = {
+      # Первая облачная роль (R8.5) — для "альтернативного автономного" агента
+      # (AI-AGT-1, §3.4 AI_SUBSYSTEM.md); сам агент — шаг R8.6 (agents-tools),
+      # роль готова заранее.
+      # Модель сверена со списком /api/v1/models OpenRouter 2026-10-29 (не по
+      # обзорам: ранее здесь стоял "qwen/qwen3-coder:free", которого в API нет —
+      # у Qwen3 Coder бесплатного варианта не публикуется). Nemotron 3 Ultra:
+      # 550B всего / 55B активных, контекст 1M, тариф ":free".
+      # Бесплатные варианты у OpenRouter приходят и уходят — при ошибке 404/400
+      # от провайдера сверить ID по https://openrouter.ai/api/v1/models.
+      cost-autonomous = {
+        provider = "openrouter";
+        model = "nvidia/nemotron-3-ultra-550b-a55b:free";
+      };
+    };
+
     my.tunnel = {
       # mode остаётся m1 (умолчание tunnel-facts) — вердикт гейта 7.3 от
       # 2026-10-14: xray-core 26.3.27 его не проходит, подробности и условия
