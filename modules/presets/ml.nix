@@ -1,7 +1,7 @@
 # Фича: ml · Слот: — · Домен: presets · Классы: N+H · Для: пользователей с capability ml
 # Контракт: STR-7 (пресет — только imports). compute-cache — R8.1; ai-facts,
-# inference-service-ollama — R8.2; llm-gateway — R8.5 (первая homeManager-часть
-# пресета); agents-tools, code-context — R8.6–R8.7 (AI_SUBSYSTEM.md §2.1).
+# inference-service-ollama — R8.2; llm-gateway — R8.5; agents-tools — R8.6;
+# code-context — R8.7 (AI_SUBSYSTEM.md §2.1).
 # Зависимости: —
 { config, ... }:
 let
@@ -18,6 +18,9 @@ in
     ];
   };
   flake.modules.homeManager.ml = {
-    imports = [ hm.llm-gateway ];
+    imports = [
+      hm.llm-gateway
+      hm.agents-tools
+    ];
   };
 }
