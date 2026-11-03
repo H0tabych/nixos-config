@@ -21,6 +21,7 @@ in
     imports = [
       hm.llm-gateway
       hm.agents-tools
+      hm.code-context
     ];
   };
 }

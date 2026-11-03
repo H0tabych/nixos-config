@@ -100,6 +100,15 @@ pkgs.writeShellApplication {
           --env "DISABLE_ERROR_REPORTING=1"
           --env "DISABLE_AUTOUPDATER=1"
         )
+        # R8.7 (AI-CTX-3): список MCP-серверов подсистемы — из dotfiles/ai/
+        # (сгенерированный файл, ссылка ~/.config/ai). Добавляется к MCP
+        # пользователя, без --strict-mcp-config: свои серверы из ~/.claude.json
+        # остаются. Определения MCP из проекта по-прежнему недоверенные
+        # (AI-SBX-9) — решает само приложение. Путь виден внутри песочницы,
+        # потому что роль идёт с открытым $HOME (--home-rw выше).
+        if [ -r "$HOME/.config/ai/generated/claude.mcp.json" ]; then
+          extra_bin_args=(--mcp-config "$HOME/.config/ai/generated/claude.mcp.json")
+        fi
         # Через шлюз эту роль НЕ направляем (AI-GW-11: режим входа по подписке
         # шлюз не обслуживает). ПРОВЕРЕНО живьём: ANTHROPIC_BASE_URL +
         # ANTHROPIC_AUTH_TOKEN перебивают вход claude.ai («connectors are
