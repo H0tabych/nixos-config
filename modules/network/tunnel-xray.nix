@@ -3,6 +3,9 @@
 # VPN-DNS-1, VPN-DNS-3..5. Единственный владелец юнита tunnel-xray и его конфига
 # (VPN-CLI-1). Конфиг рендерится sops-nix из шаблона при старте — в /nix/store
 # попадают только плейсхолдеры (VPN-CLI-2).
+# Пакет — из нестабильного канала (VPN-CLI-11, ARCH-14): в 26.05 версия 26.3.27, она не
+# выдерживает M2-1, а выход обновляется до версии с исправлениями безопасности, и
+# расхождение версий клиента и выхода — частая причина сбоев (VPN-CLI-12, ADR-41).
 # Прокси-переменные графической сессии (NET-10, DOT-7) эта фича НЕ доставляет:
 # env-файл менеджера сессий принадлежит слоту session (session-hyprland), иначе
 # замена композитора (DESK-10) потребовала бы правки сетевой фичи (ARCH-16, SLOT-3).
@@ -40,7 +43,7 @@ in
     let
       cfg = config.my.tunnel;
       inherit (cfg) mode;
-      pkg = pkgs.xray;
+      pkg = pkgs.unstable.xray;
       ph = name: config.sops.placeholder.${name};
       policy = import ./_tunnel-xray-policy.nix { inherit lib; };
       nixProxy = import ./_tunnel-xray-nix-proxy.nix { inherit lib; };

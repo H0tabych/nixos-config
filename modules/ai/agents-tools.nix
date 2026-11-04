@@ -2,8 +2,10 @@
 # Контракт: AI_SUBSYSTEM.md §3.4 (AI-AGT-1…7, «Лаунчер-песочница» AI-SBX-1…11).
 # Три роли (AI-AGT-1): claude-code (тяжёлый автономный), DeepSeek Harness
 # (альтернативный автономный — другое семейство моделей), aider-chat
-# (контролируемый). claude-code/aider-chat нет в nixpkgs-26.05 (ПРОВЕРЕНО
-# `nix eval`) — точечно из pkgs.unstable (ARCH-14, прецедент nix-settings.nix).
+# (контролируемый). claude-code в nixpkgs-26.05 отстаёт — точечно из pkgs.unstable
+# (ARCH-14, прецедент nix-settings.nix). aider-chat — из основного канала, версия та
+# же; в unstable он с 2026-10-19 не вычисляется: зависимость posthog помечена broken
+# при mcp >= 2 (ПРОВЕРЕНО `nix eval`, 2026-11-05).
 # DeepSeek Harness нет вообще (ни 26.05, ни unstable) — своя деривация
 # (_agents-tools-dsh-package.nix) с автозаменой на nixpkgs через `or`, как
 # только пакет там появится (проверять `nix search` перед `flake update`).
@@ -70,7 +72,7 @@ _: {
       ];
 
       claudeCode = pkgs.unstable.claude-code;
-      aiderChat = pkgs.unstable.aider-chat;
+      aiderChat = pkgs.aider-chat;
       # ПРОВЕРИТЬ при каждом `flake update`: `nix search nixpkgs deepseek-harness`.
       # Как только пакет появится в канале (стабильном или unstable), `or`
       # сам начнёт использовать его — отдельная правка не нужна.
