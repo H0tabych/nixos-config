@@ -66,23 +66,26 @@ pkgs.writeShellApplication {
     repo_hash=$(printf '%s' "$repo_root" | sha256sum | cut -c1-16)
     clone_dir="$state_dir/repos/$repo_hash"
 
+    # AI-SBX-4: direnv хранит разрешения по пути+содержимому (`direnv
+    # allow`), а клон — новый путь, даже если .envrc в нём побайтово
+    # совпадает с уже одобренным в исходном репозитории — ПРОВЕРЕНО: без
+    # этого direnv блокировал .envrc клона и срывал активацию окружения.
+    # Доверие переносим автоматически: человек уже одобрил именно это
+    # содержимое в исходном репозитории, клон содержит ровно его (на
+    # момент HEAD, см. шапку файла про незакоммиченные правки).
+    allow_envrc() {
+      if [ -f "$clone_dir/.envrc" ]; then
+        direnv allow "$clone_dir" >&2 2>&1 || true
+      fi
+    }
+
     if [ ! -d "$clone_dir/.git" ]; then
       mkdir -p "$state_dir/repos"
       echo "agent-launcher: первый запуск для $repo_root — клонирую в $clone_dir (AI-SBX-7)" >&2
       git clone --quiet "$repo_root" "$clone_dir" >&2
       branch="agent/$role/$(date +%Y%m%d-%H%M%S)"
       git -C "$clone_dir" checkout --quiet -b "$branch" >&2
-
-      # AI-SBX-4: direnv хранит разрешения по пути+содержимому (`direnv
-      # allow`), а клон — новый путь, даже если .envrc в нём побайтово
-      # совпадает с уже одобренным в исходном репозитории — ПРОВЕРЕНО: без
-      # этого direnv блокировал .envrc клона и срывал активацию окружения.
-      # Доверие переносим автоматически: человек уже одобрил именно это
-      # содержимое в исходном репозитории, клон содержит ровно его (на
-      # момент HEAD, см. шапку файла про незакоммиченные правки).
-      if [ -f "$clone_dir/.envrc" ]; then
-        direnv allow "$clone_dir" >&2 2>&1 || true
-      fi
+      allow_envrc
 
       hooks_dir="$clone_dir/.git/agent-hooks"
       mkdir -p "$hooks_dir"
@@ -97,8 +100,26 @@ pkgs.writeShellApplication {
 
       echo "agent-launcher: ветка $branch; слияние вручную — cd $clone_dir && git log" >&2
     else
-      branch=$(git -C "$clone_dir" rev-parse --abbrev-ref HEAD)
+      # symbolic-ref, а не `rev-parse --abbrev-ref HEAD`: у клона пустого
+      # репозитория ветка ещё без коммитов, и rev-parse на ней падает.
+      branch=$(git -C "$clone_dir" symbolic-ref --short -q HEAD || echo HEAD)
       echo "agent-launcher: переиспользую клон $clone_dir (ветка $branch)" >&2
+
+      # Клон сделан, когда в источнике не было коммитов, а теперь они есть.
+      # Исключение из «синхронизация вручную» (шапка файла): истории агента
+      # ещё нет, переписывать нечего. Неотслеживаемые файлы агента checkout
+      # не затирает, при конфликте отказывает.
+      if ! git -C "$clone_dir" rev-parse -q --verify HEAD >/dev/null \
+        && git -C "$repo_root" rev-parse -q --verify HEAD >/dev/null; then
+        git -C "$clone_dir" fetch --quiet origin >&2
+        git -C "$clone_dir" fetch --quiet origin HEAD >&2
+        if ! git -C "$clone_dir" checkout --quiet -B "$branch" FETCH_HEAD >&2; then
+          echo "agent-launcher: не удалось подхватить коммиты $repo_root в $clone_dir: уберите мешающие файлы из клона" >&2
+          exit 1
+        fi
+        allow_envrc
+        echo "agent-launcher: в клон подхвачены коммиты $repo_root" >&2
+      fi
     fi
 
     target="$clone_dir/$rel"

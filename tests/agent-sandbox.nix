@@ -372,6 +372,51 @@ pkgs.testers.runNixOSTest {
     ).strip()
     assert clone_path_2 == clone_path, "повторный запуск должен переиспользовать тот же клон"
 
+    # Клон репозитория без коммитов: повторный запуск не падает, пока источник
+    # пуст, и подхватывает коммиты, когда они появились.
+    isolate_empty = (
+        "su - agent -c "
+        "'agents-git-isolate dsh /home/agent/state /home/agent/proj-empty'"
+    )
+    machine.succeed("su - agent -c 'git init -q /home/agent/proj-empty'")
+    empty_clone = machine.succeed(isolate_empty).strip()
+    empty_branch = machine.succeed(
+        f"su - agent -c 'git -C {empty_clone} symbolic-ref --short HEAD'"
+    ).strip()
+    assert empty_branch.startswith("agent/dsh/"), (
+        f"клон пустого репозитория должен быть на ветке агента, получено: {empty_branch!r}"
+    )
+    assert machine.succeed(isolate_empty).strip() == empty_clone, (
+        "пока источник пуст, повторный запуск должен вернуть тот же клон"
+    )
+
+    # Неотслеживаемый файл агента не затирается: отказ с понятной причиной.
+    machine.succeed(
+        "su - agent -c "
+        "'cd /home/agent/proj-empty "
+        "&& echo hi > README.md && git add . && git commit -qm init'"
+    )
+    machine.succeed(f"su - agent -c 'echo agent > {empty_clone}/README.md'")
+    status, out = machine.execute(isolate_empty + " 2>&1")
+    assert status != 0 and "мешающие файлы" in out, (
+        f"конфликт с файлом агента должен приводить к отказу, получено: {out!r}"
+    )
+    assert machine.succeed(f"su - agent -c 'cat {empty_clone}/README.md'").strip() == "agent", (
+        "неотслеживаемый файл агента не должен быть перезаписан"
+    )
+
+    machine.succeed(f"su - agent -c 'rm {empty_clone}/README.md'")
+    assert machine.succeed(isolate_empty).strip() == empty_clone, (
+        "после появления коммитов клон должен остаться тем же"
+    )
+    assert machine.succeed(
+        f"su - agent -c 'git -C {empty_clone} symbolic-ref --short HEAD'"
+    ).strip() == empty_branch, "ветка агента должна сохраниться"
+    source_head = machine.succeed("su - agent -c 'git -C /home/agent/proj-empty rev-parse HEAD'")
+    clone_head = machine.succeed(f"su - agent -c 'git -C {empty_clone} rev-parse HEAD'")
+    assert clone_head == source_head, "клон должен подхватить коммит источника"
+    machine.succeed(f"su - agent -c 'test -f {empty_clone}/README.md'")
+
     # Каталог вне git — AI-SBX-7 неприменим, путь возвращается как есть.
     passthrough = machine.succeed(
         "su - agent -c 'agents-git-isolate dsh /home/agent/state /home/agent/project'"
