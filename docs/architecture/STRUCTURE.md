@@ -296,7 +296,7 @@ tests/
 |---|---|
 | Подключение | Только через `modules/core/checks-subsystems.nix` |
 | Именование | По проверяемому свойству, а не по фиче: `killswitch-fail-fast`, `agent-sandbox`, `tunnel-config` |
-| Фикстуры | UUID из нулей, ключи формата, но не настоящие. Каталог `tests/fixtures/` внесён в исключения `.gitleaks.toml` — это единственное исключение сканера |
+| Фикстуры | UUID из нулей, ключи формата, но не настоящие; там, где нужно настоящее рукопожатие, — рабочая пара ключей только для ВМ (`tests/tunnel-m2.nix`). Каталог `tests/fixtures/` внесён в исключения `.gitleaks.toml` — это единственное исключение сканера |
 
 ### 5.2 `scripts/`
 
@@ -577,7 +577,7 @@ nixos-config/
 ├── assets/                   README.md  sddm/  vpn-client/
 ├── templates/                python/  rust/  cpp/  sql/  ml-cuda/
 ├── tests/                    killswitch-fail-fast.nix  agent-sandbox.nix  tunnel-config.nix
-│                            tunnel-route-runtime.nix  fixtures/
+│                            tunnel-m2.nix  tunnel-route-runtime.nix  fixtures/
 ├── scripts/                  check-structure.sh  check-lock.sh  check-doc-ids.sh
 │                            check-secrets.sh  dotfiles-clone.sh  hibernate-offset.sh  new-feature.sh
 └── docs/
@@ -652,6 +652,7 @@ dotfiles/                     (отдельный репозиторий)
 | AI-A7, AI-A8 | `tests/agent-sandbox.nix` |
 | AI-CTX-3 | `dotfiles/ai/` |
 | VPN-OPS-1, VPN-A14 | `tests/tunnel-config.nix`, `tests/fixtures/` |
+| VPN-A5…A8, M2-1…M2-3, M2-5, M2-6, M2-8 | `tests/tunnel-m2.nix`, `tests/fixtures/` |
 | VPN-A8 | `tests/killswitch-fail-fast.nix` |
 | VPN-A16 | `tests/tunnel-route-runtime.nix` |
 | VPN-OPS-2 | `dotfiles/net/` |

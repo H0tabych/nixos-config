@@ -235,7 +235,7 @@ nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrName
 | Правило | Что не выполняется | Что сделать |
 |---|---|---|
 | AI-A3, AI-RES-3 | dGPU не уходил в suspended после выгрузки: при `finegrained = false` на устройстве `power/control = on`, `runtime_status = active`, `Runtime D3 status: Disabled by default` (проверено 2026-11-05) | Тест ниже. Блокирует AI-A3 в G8 |
-| AI-A5, AI-A9 | Части, зависящие от M2 | Гейт 7.3 (ADR-35) |
+| AI-A5, AI-A9 | Части, зависящие от M2 | Гейт 7.3 на машине (ADR-41) |
 | AI-INF-8, STO-1, STO-8 | Модели лежат в `/var/lib/ollama/models`, то есть на `@rootfs`: попадают в снимки корня с бюджетом 10 ГиБ. `backup` не читает `modelsDir` | Отдельный `fix:`, см. ниже |
 
 Предлагаемое исправление AI-INF-8:
