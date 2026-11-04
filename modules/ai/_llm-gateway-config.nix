@@ -4,7 +4,9 @@
 # тег transports/v2.1.0) и официальных примеров (examples/configs/withroutingrules):
 #   - client.enforce_auth_on_inference — требует ключ на каждом инференс-запросе (AI-GW-4);
 #   - client.disable_content_logging — содержимое не логируется по умолчанию (AI-GW-7);
-#   - providers.ollama.keys[].ollama_key_config.url — локальный бэкенд без ключа (value="");
+#   - providers.local-inference — локальный бэкенд без ключа: custom-провайдер поверх
+#     OpenAI-совместимого API (AI-INF-2), а не встроенный провайдер конкретной реализации.
+#     Замена реализации слота inference-service шлюз не затрагивает (AI-A13, A18);
 #   - governance.auth_config.is_enabled — аутентификация management-API (без неё —
 #     известные RCE через management-интерфейс в более старых версиях; в апстриме
 #     выключена по умолчанию, пин версии и включение этого поля — обязательны);
@@ -26,8 +28,8 @@
 # AI-GW-5 (fallback) здесь реализован как «явная ошибка», что контракт допускает
 # прямо («запрос получает явную ошибку ЛИБО переводится на локальную роль»).
 # Поле routing_rules[].fallbacks — цепочка ПРОВАЙДЕРОВ при неизменной модели,
-# поэтому «облако → локальная модель» им не выражается: ollama получил бы
-# облачное имя модели и всё равно отказал. Перевод на локальную роль — отдельная
+# поэтому «облако → локальная модель» им не выражается: локальный бэкенд получил
+# бы облачное имя модели и всё равно отказал. Перевод на локальную роль — отдельная
 # задача (ПРОВЕРИТЬ при R8.6, когда появится реальный потребитель-агент).
 #
 # Значения секретов — напрямую, не через "env.<ИМЯ>". Ссылки "env." шлюз
@@ -77,12 +79,16 @@ let
   # проходит. "environment" включает fasthttpproxy.FasthttpProxyHTTPDialer(),
   # который берёт адрес из окружения юнита — поэтому адрес прокси здесь НЕ
   # дублируется (NET-10, L-7): он приходит из единственного места, сессии.
-  # Для ollama поле не ставится: это loopback, прокси ему не нужен (и no_proxy
-  # его и так исключает).
+  # Для локального бэкенда поле не ставится: это loopback, прокси ему не нужен
+  # (и no_proxy его и так исключает).
   cloudProviders = lib.mapAttrs (_: keys: {
     inherit keys;
     proxy_config.type = "environment";
   }) cloudKeysByProvider;
+
+  # Имя провайдера локальных ролей — наше, не встроенное в шлюз: встроенное имя
+  # конкретной реализации привязало бы шлюз к слоту inference-service (AI-A13).
+  localProvider = "local-inference";
 
   # Одно правило на роль: имя роли на входе → реальный провайдер и модель.
   # priority ОБЯЗАН быть уникальным в пределах scope: иначе шлюз падает на старте
@@ -108,7 +114,7 @@ let
   routingRules = lib.imap0 (i: f: f i) (
     lib.mapAttrsToList (
       role: model: priority:
-      mkRoutingRule priority role "ollama" model
+      mkRoutingRule priority role localProvider model
     ) localRoles
     ++ lib.mapAttrsToList (
       role: r: priority:
@@ -131,16 +137,25 @@ in
   };
 
   providers = cloudProviders // {
-    ollama = {
-      keys = [
-        {
-          name = "ollama-local";
-          value = "";
-          models = [ "*" ];
-          weight = 1.0;
-          ollama_key_config.url = "http://${inference.host}:${toString inference.port}";
-        }
-      ];
+    # Поля — по схеме transports/v2.1.0; без /v1 в base_url: путь дописывает базовый
+    # провайдер openai (core/providers/openai/openai.go). is_key_less — ключи не
+    # нужны (core/utils.go, providerRequiresKey). ПРОВЕРИТЬ живым запросом роли
+    # через шлюз (AI-A13, docs/runbook/ai.md): вычисление конфига этого не доказывает.
+    ${localProvider} = {
+      network_config.base_url = "http://${inference.host}:${toString inference.port}";
+      custom_provider_config = {
+        base_provider_type = "openai";
+        is_key_less = true;
+        # Только то, что обещает AI-INF-2; остальное — явный отказ шлюза, а не 404 бэкенда.
+        allowed_requests = {
+          list_models = true;
+          text_completion = true;
+          text_completion_stream = true;
+          chat_completion = true;
+          chat_completion_stream = true;
+          embedding = true;
+        };
+      };
     };
   };
 
