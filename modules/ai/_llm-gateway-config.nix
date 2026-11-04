@@ -139,8 +139,8 @@ in
   providers = cloudProviders // {
     # Поля — по схеме transports/v2.1.0; без /v1 в base_url: путь дописывает базовый
     # провайдер openai (core/providers/openai/openai.go). is_key_less — ключи не
-    # нужны (core/utils.go, providerRequiresKey). ПРОВЕРИТЬ живым запросом роли
-    # через шлюз (AI-A13, docs/runbook/ai.md): вычисление конфига этого не доказывает.
+    # нужны (core/utils.go, providerRequiresKey). ПРОВЕРЕНО живым запросом роли
+    # через шлюз 2026-11-05 (AI-A13, docs/runbook/ai.md).
     ${localProvider} = {
       network_config.base_url = "http://${inference.host}:${toString inference.port}";
       custom_provider_config = {
