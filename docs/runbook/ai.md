@@ -234,7 +234,7 @@ nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrName
 
 | Правило | Что не выполняется | Что сделать |
 |---|---|---|
-| AI-A3, AI-RES-3 | dGPU не уходит в suspended после выгрузки: `hardware/gpu-discrete` держит `finegrained = false`, на устройстве `power/control = on`, `runtime_status = active` (проверено 2026-11-05) | Решение владельца `hardware/*` после теста энергопотребления. Блокирует AI-A3 в G8 |
+| AI-A3, AI-RES-3 | dGPU не уходил в suspended после выгрузки: при `finegrained = false` на устройстве `power/control = on`, `runtime_status = active`, `Runtime D3 status: Disabled by default` (проверено 2026-11-05) | Тест ниже. Блокирует AI-A3 в G8 |
 | AI-A5, AI-A9 | Части, зависящие от M2 | Гейт 7.3 (ADR-35) |
 | AI-INF-8, STO-1, STO-8 | Модели лежат в `/var/lib/ollama/models`, то есть на `@rootfs`: попадают в снимки корня с бюджетом 10 ГиБ. `backup` не читает `modelsDir` | Отдельный `fix:`, см. ниже |
 
@@ -247,3 +247,40 @@ nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrName
 
 Откат: вернуть дефолт и снова `just test`; модель останется на старом месте, пока
 не удалена вручную.
+
+### Тест `finegrained` (AI-A3)
+
+NVIDIA заявляет RTD3 в открытых модулях только с Ampere ([README 595](https://download.nvidia.com/XFree86/Linux-x86_64/595.58.03/README/kernel_open.html)),
+а у `sgms-laptop` Turing и `open = true`. Поэтому тест в два этапа. Проприетарные модули
+Turing поддерживают.
+
+Условия замера: батарея, внешний монитор отключён (hosts/sgms-laptop.md), 10 минут простоя.
+`nvidia-smi` не запускать: он будит GPU.
+
+```sh
+P=/sys/bus/pci/devices/0000:01:00.0/power
+cat $P/control $P/runtime_status $P/runtime_suspended_time
+cat /proc/driver/nvidia/gpus/0000:01:00.0/power
+upower -i "$(upower -e | grep BAT)" | grep energy-rate
+```
+
+| Этап | Что меняется | `runtime_status` | `Runtime D3 status` | Мощность простоя |
+|---|---|---|---|---|
+| База | `finegrained = false` | active | Disabled by default | Снять |
+| А | `finegrained = true` | Снять | Снять | Снять |
+| Б, если А не дал suspended | ещё и `open = false`, при необходимости `NVreg_EnableGpuFirmware=0` | Снять | Снять | Снять |
+
+Этап А и Б применяются через `just boot` и перезагрузку: параметры модуля читаются при его
+загрузке. Этап Б меняет запись в A.6 Архитектуры и требует заново проверить A7 (CUDA).
+
+Критерий приёмки варианта:
+
+1. После `inference-release` статус `suspended`, мощность простоя ниже базы (AI-A3).
+2. Три цикла hibernate подряд, инференс на GPU после каждого (AI-A5).
+3. Игра идёт на dGPU, FIM после неё загружается по требованию (AI-A4).
+
+Если устройство всё равно держит процесс, посмотреть `sudo lsof /dev/nvidia*`. Если это демон
+инференса, это отдельная находка для фичи инференса.
+
+Откат на любом этапе — предыдущее поколение. Если ни один вариант не прошёл, вернуть
+`finegrained = false` и записать исключение AI-A3/A5 здесь; решение по G8 принимает владелец.
