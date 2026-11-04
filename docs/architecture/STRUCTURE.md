@@ -546,7 +546,7 @@ nixos-config/
 │   ├── security/             sops  ssh  hardening  firewall
 │   ├── network/              network-manager  dns-resolver  vpn-client
 │   │                         tunnel-facts  tunnel-xray  [tunnel-server-xray]  killswitch
-│   │                         _tunnel-xray-policy.nix  _killswitch-rules.nft
+│   │                         route-switch  _tunnel-xray-policy.nix  _killswitch-rules.nft
 │   ├── desktop/              session-hyprland  display-manager-sddm  bar-waybar
 │   │                         notifier-mako  launcher-rofi  lockscreen-hyprlock
 │   │                         idle-hypridle  wallpaper-hyprpaper  screenshot-grim
@@ -576,7 +576,8 @@ nixos-config/
 ├── secrets/                  README.md  common.yaml  hosts/sgms-laptop.yaml  users/sgm.yaml
 ├── assets/                   README.md  sddm/  vpn-client/
 ├── templates/                python/  rust/  cpp/  sql/  ml-cuda/
-├── tests/                    killswitch-fail-fast.nix  agent-sandbox.nix  tunnel-config.nix  fixtures/
+├── tests/                    killswitch-fail-fast.nix  agent-sandbox.nix  tunnel-config.nix
+│                            tunnel-route-runtime.nix  fixtures/
 ├── scripts/                  check-structure.sh  check-lock.sh  check-doc-ids.sh
 │                            check-secrets.sh  dotfiles-clone.sh  hibernate-offset.sh  new-feature.sh
 └── docs/
@@ -611,7 +612,7 @@ dotfiles/                     (отдельный репозиторий)
 | `media` | capability | browser-firefox (APP-3: политики браузера — на уровне NixOS) | video-player-mpv, torrent-transmission |
 | `gaming` | capability | game-platform-steam, compat-layer-proton-ge, game-optimizer-gamemode, overlay-mangohud | overlay-mangohud |
 | `ml` | capability | ai-facts, compute-cache, inference-service-ollama, container-gpu-nvidia, llm-gateway | llm-gateway, agents-tools, code-context |
-| `tunnel` | среда хоста | tunnel-facts, tunnel-xray, killswitch, dns-resolver | — |
+| `tunnel` | среда хоста | tunnel-facts, tunnel-xray, killswitch, dns-resolver, route-switch | — |
 
 Класс слота рабочего стола выбирается так: если NixOS-модуль даёт только
 `enable`/`package` (и, при необходимости, PAM или user-юнит-шаблон), а HM-модуль
@@ -652,5 +653,6 @@ dotfiles/                     (отдельный репозиторий)
 | AI-CTX-3 | `dotfiles/ai/` |
 | VPN-OPS-1, VPN-A14 | `tests/tunnel-config.nix`, `tests/fixtures/` |
 | VPN-A8 | `tests/killswitch-fail-fast.nix` |
+| VPN-A16 | `tests/tunnel-route-runtime.nix` |
 | VPN-OPS-2 | `dotfiles/net/` |
 | VPN-SEC-8 | `.gitleaks.toml` (шаблоны UUID, ключей, адресов) |
