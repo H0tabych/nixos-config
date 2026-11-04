@@ -594,7 +594,7 @@
 
 ```jsonc
 {
-  "log": { "loglevel": "warning" },
+  "log": { "loglevel": "warning", "access": "none" },   // без "none" адресаты идут в журнал на любом уровне (CLI-8)
   "dns": {
     "servers": [
       { "address": "<dnsDirect>", "domains": [ /* policy.direct */ ], "skipFallback": true },

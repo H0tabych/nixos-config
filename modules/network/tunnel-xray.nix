@@ -1,11 +1,12 @@
 # Фича: tunnel-xray · Слот: tunnel · Домен: network · Классы: N · Для: хоста с пресетом tunnel
-# Контракт: VPN-CLI-1..9, VPN-MOD-2/4, NET-1..4, NET-9, SEC-4, VPN-RTE-1..8,
-# VPN-DNS-1, VPN-DNS-3..5. Единственный владелец юнита tunnel-xray и его конфига
-# (VPN-CLI-1). Конфиг рендерится sops-nix из шаблона при старте — в /nix/store
-# попадают только плейсхолдеры (VPN-CLI-2).
-# Пакет — из нестабильного канала (VPN-CLI-11, ARCH-14): в 26.05 версия 26.3.27, она не
-# выдерживает M2-1, а выход обновляется до версии с исправлениями безопасности, и
-# расхождение версий клиента и выхода — частая причина сбоев (VPN-CLI-12, ADR-41).
+# Контракт: VPN-CLI-1..9, VPN-CLI-11, VPN-MOD-2/3/4/12, NET-1..4, NET-7, NET-9, SEC-4,
+# VPN-RTE-1..8, VPN-DNS-1, VPN-DNS-3..5, ADR-41. Единственный владелец юнита
+# tunnel-xray и его конфига (VPN-CLI-1). Конфиг рендерится sops-nix из шаблона при
+# старте — в /nix/store попадают только плейсхолдеры (VPN-CLI-2).
+# Пакет — из нестабильного канала (VPN-CLI-11, ARCH-14): в 26.05 версия 26.3.27, а
+# выход обновляется до версии с исправлениями безопасности, и расхождение версий
+# клиента и выхода — частая причина сбоев (VPN-CLI-12). Конфиг от версии не зависит,
+# откат на pkgs.xray — один атрибут (ADR-41).
 # Прокси-переменные графической сессии (NET-10, DOT-7) эта фича НЕ доставляет:
 # env-файл менеджера сессий принадлежит слоту session (session-hyprland), иначе
 # замена композитора (DESK-10) потребовала бы правки сетевой фичи (ARCH-16, SLOT-3).
@@ -18,15 +19,13 @@
 # пересмотра — в docs/runbook/tunnel.md.
 # DNS и routing строятся из my.tunnel.policy.* данными _tunnel-xray-policy.nix
 # (STR-6); domainStrategy — "IPOnDemand" в M1 (резолвит по требованию,
-# VPN-RTE-3), "AsIs" в M2 (IP уже известен из sniffing tun-in, P.3).
-# Метка sockopt.mark на outbound "proxy" — my.tunnel.killswitch.mark, та же,
-# что killswitch.nix пропускает своим правилом (VPN-KS-2): без неё в M2
-# собственное соединение xray к выходу попало бы в tun-in и зациклилось бы
-# через само себя. Опция существует всегда (не только в M2), поэтому
-# присваивается без условия на mode — в M1 метка просто ни на что не влияет
-# (таблицы killswitch нет), вторая опция не вводится (ARCH-5).
+# VPN-RTE-3), "AsIs" в M2 (IP уже известен, домен берётся из sniffing tun-in).
+# Метка sockopt.mark на всех исходящих — my.tunnel.killswitch.mark, та же, что
+# killswitch.nix пропускает своим правилом (VPN-KS-2, VPN-KS-10). В M1 у процесса
+# нет CAP_NET_ADMIN, поэтому setsockopt отказывает, ядро туннеля это только
+# записывает в журнал info и соединение идёт дальше; метка ни на что не влияет.
 # Зависимости: host-facts (my.host.name), tunnel-facts (my.tunnel.*; через
-# config.my.*, не import — ARCH-3).
+# config.my.*, не import — ARCH-3), firewall (nftables) — только assertion.
 { config, ... }:
 let
   outer = config;
@@ -43,22 +42,30 @@ in
     let
       cfg = config.my.tunnel;
       inherit (cfg) mode;
+      m2 = mode == "m2";
+      inherit (cfg.killswitch) mark;
       pkg = pkgs.unstable.xray;
       ph = name: config.sops.placeholder.${name};
       policy = import ./_tunnel-xray-policy.nix { inherit lib; };
       nixProxy = import ./_tunnel-xray-nix-proxy.nix { inherit lib; };
-      routes = import ./_tunnel-xray-routes.nix { inherit lib pkgs; };
+      routes = import ./_tunnel-xray-routes.nix { inherit pkgs; };
 
       queryStrategy = if cfg.ipv6 == "blocked" then "UseIPv4" else "UseIP";
 
       xrayConfig = {
-        log.loglevel = "warning";
+        # access = "none": иначе адресат каждого соединения попадает в журнал на любом
+        # уровне (VPN-CLI-8), а в M2 это весь трафик машины.
+        log = {
+          loglevel = "warning";
+          access = "none";
+        };
         dns = policy.mkDns {
           inherit (cfg.policy) dnsDirect direct;
           inherit queryStrategy;
           inherit (policy) dohResolvers;
+          endpoint = ph "tunnel.endpoint";
         };
-        inbounds = policy.mkInbounds { inherit (cfg) local mode; };
+        inbounds = policy.mkInbounds { inherit (cfg) local mode interface; };
         outbounds = [
           {
             tag = "proxy";
@@ -91,41 +98,35 @@ in
                 # сразу после включения подписи на выходе (VPN-SRV-3).
                 mldsa65Verify = "";
               };
-              sockopt.mark = cfg.killswitch.mark;
+              # domainStrategy: если адрес выхода — имя, его разрешает DNS-секция
+              # этого конфига, а не системный резолвер (см. mkDns).
+              sockopt = {
+                inherit mark;
+                domainStrategy = queryStrategy;
+              };
             };
           }
         ]
-        ++ policy.mkOutbounds { inherit (cfg) ipv6 mode; };
+        ++ policy.mkOutbounds {
+          inherit (cfg) mode;
+          inherit mark queryStrategy;
+        };
         routing = {
-          domainStrategy = if cfg.mode == "m2" then "AsIs" else "IPOnDemand";
-          rules = policy.mkRoutingRules (cfg.policy // { inherit mode; });
+          domainStrategy = if m2 then "AsIs" else "IPOnDemand";
+          rules = policy.mkRoutingRules (
+            cfg.policy
+            // {
+              inherit (cfg) mode interface;
+            }
+          );
         };
       };
     in
     {
-      # Вердикт гейта 7.3 (2026-10-14, проверено на машине): xray-core 26.3.27
-      # его НЕ проходит — tun-инбаунд создаёт устройство, но не назначает ему
-      # IPv4-адрес (в `ip addr` только автоматический link-local IPv6), поэтому
-      # маршрут через него для IPv4 неработоспособен: ядру неоткуда взять адрес
-      # источника, и трафик уходит в чёрную дыру. Падает уже M2-1 (базовый
-      # TCP/UDP), а с ним и M2-9 (версия стабильного канала не выдерживает
-      # M2-1…M2-8). §7.3 на этот случай предписывает: «режим остаётся M1, а
-      # ограничения M1 (MOD-2) документируются; решение пересматривается при
-      # выходе новых версий».
-      #
-      # Assertion, а не комментарий, потому что цена ошибки — потеря сети на
-      # единственной машине (дважды проверено практикой). Снимать вместе с
-      # прогоном M2-1…M2-9 заново: при новой версии ядра, умеющей адресацию
-      # tun (или после добавления `ip addr add` в tunnel-routes и проверки,
-      # что ядро действительно проксирует пакеты устройства).
       assertions = [
         {
-          assertion = mode != "m2";
-          message =
-            "my.tunnel.mode = \"m2\" заблокирован: гейт 7.3 не пройден на xray-core "
-            + "${pkg.version} (tun-инбаунд не назначает IPv4-адрес устройству, "
-            + "маршрутизация через него не работает — проверено 2026-10-14, сеть "
-            + "пропадала). Условия снятия — docs/runbook/tunnel.md, раздел «Переход на M2».";
+          assertion = !m2 || config.networking.nftables.enable;
+          message = "tunnel-xray в режиме m2 требует nftables (фича firewall): на них работает таблица метки клиента";
         }
       ];
 
@@ -153,14 +154,18 @@ in
         restartUnits = [ "tunnel-xray.service" ];
       };
 
-      # M2: маршруты поднимает отдельный юнит по появлению устройства —
-      # xray их не настраивает (см. шапку _tunnel-xray-routes.nix).
-      systemd.services.tunnel-routes = lib.mkIf (mode == "m2") (
+      # M2: обвязка со стороны ОС (см. шапку _tunnel-xray-routes.nix).
+      # src_valid_mark: ядерный rp_filter должен видеть ту же восстановленную метку,
+      # что и rpfilter файрвола; иначе, пока устройства нет, ответы клиента
+      # проверялись бы по unreachable в таблице туннеля и отбрасывались.
+      systemd.services.tunnel-routes = lib.mkIf m2 (
         routes.mkRoutesService {
-          inherit (policy) tunInterface;
-          inherit (cfg.killswitch) mark;
+          inherit (cfg) interface;
+          inherit mark;
         }
       );
+      networking.nftables.tables.tunnel-marks = lib.mkIf m2 (routes.mkMarksTable { inherit mark; });
+      boot.kernel.sysctl = lib.mkIf m2 { "net.ipv4.conf.all.src_valid_mark" = 1; };
 
       systemd.services.tunnel-xray = {
         description = "Клиент туннеля (VLESS + Reality, режим ${mode})";
@@ -170,26 +175,29 @@ in
         # игнорировал. Активация идёт до старта юнитов, поэтому файл шаблона уже
         # на месте; перерисовку при смене значения обеспечивает restartUnits
         # у sops.templates.tunnel-xray ниже.
-        after = [ "network-online.target" ];
-        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ] ++ lib.optional m2 "tunnel-routes.service";
+        wants = [ "network-online.target" ] ++ lib.optional m2 "tunnel-routes.service";
         serviceConfig = {
           DynamicUser = true;
           LoadCredential = "config.json:${config.sops.templates.tunnel-xray.path}";
           ExecStartPre = "${pkg}/bin/xray run -test -c %d/config.json";
           ExecStart = "${pkg}/bin/xray run -c %d/config.json";
+          # "+": адрес и маршрут ставит root, основной процесс остаётся с минимумом
+          # прав (VPN-CLI-5).
+          ExecStartPost = lib.optional m2 "+${routes.mkLinkUp { inherit (cfg) interface; }}";
           Restart = "on-failure";
           RestartSec = 2;
           NoNewPrivileges = true;
           ProtectSystem = "strict";
           ProtectHome = true;
           PrivateTmp = true;
-          # M1: без доп. привилегий (VPN-CLI-5). M2: CAP_NET_ADMIN для tun-in —
-          # DynamicUser без нужной группы, /dev/net/tun у хоста crw-rw-rw-,
-          # но TUNSETIFF и настройку маршрутов требует именно capability, не
-          # прав на файл устройства (ARCH-6: включение — составом/значением
-          # опции, не отдельным enable).
-          CapabilityBoundingSet = lib.optionals (mode == "m2") [ "CAP_NET_ADMIN" ];
-          AmbientCapabilities = lib.optionals (mode == "m2") [ "CAP_NET_ADMIN" ];
+          # M1: без доп. привилегий (VPN-CLI-5). M2: CAP_NET_ADMIN для tun-in и
+          # SO_MARK — DynamicUser без нужной группы, /dev/net/tun у хоста
+          # crw-rw-rw-, но TUNSETIFF требует именно capability, не прав на файл
+          # устройства (ARCH-6: включение — составом/значением опции, не отдельным
+          # enable).
+          CapabilityBoundingSet = lib.optionals m2 [ "CAP_NET_ADMIN" ];
+          AmbientCapabilities = lib.optionals m2 [ "CAP_NET_ADMIN" ];
         };
       };
     };

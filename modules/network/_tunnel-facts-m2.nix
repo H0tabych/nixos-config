@@ -9,6 +9,28 @@
 {
   # Опции режима M2; вставляются в options.my.tunnel владельцем.
   m2Options = {
+    # Виртуальный интерфейс M2 — один факт для клиента, kill switch, резолвера и
+    # менеджера сети (ARCH-5). Имя — роль, а не имя реализации (VPN-KS-7, SLOT-3).
+    # Адреса из 198.18.0.0/15 (RFC 2544): в интернете не маршрутизируются и не
+    # пересекаются с домашними сетями и CGNAT.
+    interface = {
+      name = lib.mkOption {
+        type = lib.types.str;
+        default = "tunnel0";
+        description = "Имя виртуального интерфейса туннеля (VPN-MOD-3).";
+      };
+      address = lib.mkOption {
+        type = lib.types.str;
+        default = "198.18.0.1";
+        description = "Адрес хоста на интерфейсе туннеля: источник соединений приложений.";
+      };
+      dnsAddress = lib.mkOption {
+        type = lib.types.str;
+        default = "198.18.0.2";
+        description = "Адрес второго конца интерфейса — точка входа DNS клиента (VPN-DNS-2).";
+      };
+    };
+
     killswitch = {
       allowedInterfaces = lib.mkOption {
         type = lib.types.listOf lib.types.str;
