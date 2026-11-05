@@ -214,11 +214,11 @@ done < <(find modules -mindepth 2 -maxdepth 2 -name '*.nix' \
 # Половина DOT-14, относящаяся к nixos-config (вторая — «нет /nix/store в
 # dotfiles» — проверяется в CI самого репозитория dotfiles).
 # Имена — опции NixOS/HM для приложений реестра dotfiles (A.4): nvim, zsh, foot,
-# hypr*, waybar, rofi, mako, yazi, mpv, git, mangohud.
+# hypr*, eww, rofi, mako, yazi, mpv, git, mangohud.
 # Запрещены именно генераторы содержимого конфига (DOT-3). Разрешены и поэтому
 # не перечислены: enable, package, а также programs.zsh.shellInit — им система
 # сообщает ZDOTDIR, что прямо предписано DOT-12 и A.6.
-registry_apps='neovim|zsh|foot|hyprland|hypridle|hyprlock|hyprpaper|waybar|rofi|mako|yazi|mpv|git|mangohud'
+registry_apps='neovim|zsh|foot|hyprland|hypridle|hyprlock|hyprpaper|eww|rofi|mako|yazi|mpv|git|mangohud'
 generator_attrs='settings|extraConfig|extraLuaConfig|initExtra|initLua|config|configFile|theme|style|plugins|profiles'
 c12_hits=$(grep -rnE "(programs|services)\.($registry_apps)\.($generator_attrs)\b" modules --include='*.nix' 2>/dev/null || true)
 c12_hits="$c12_hits$(grep -rnE "xdg\.configFile\.\"?($registry_apps)" modules --include='*.nix' 2>/dev/null || true)"

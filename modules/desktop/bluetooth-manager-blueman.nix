@@ -3,7 +3,8 @@
 # org.blueman.Mechanism, D-Bus активация); зависит от hardware/bluetooth
 # (hardware.bluetooth.enable) — выражено assertions, а не импортом фичи (ARCH-3).
 # H — демон-аплет, user-юнит на graphical-session.target (DESK-3/DESK-4); значок
-# в трее отображает существующий модуль tray в waybar (dotfiles, DOT-3).
+# в трее не показывается (плагин StatusIcon отключён, ADR-42): Bluetooth — модуль самой
+# панели (dotfiles eww/, net/bluetooth); агент сопряжения и менеджер остаются.
 # Зависимости: —
 _: {
   flake.modules.nixos.bluetooth-manager-blueman =
@@ -28,6 +29,11 @@ _: {
           message = "bluetooth-manager-blueman требует включённую фичу hardware/bluetooth (hardware.bluetooth.enable)";
         }
       ];
+
+      # `!` перед именем — отключение плагина (PluginManager blueman, ключ по умолчанию
+      # пуст, поэтому остальные плагины не затронуты). Без StatusIcon значок в трее не
+      # создаётся; AuthAgent (запросы сопряжения) работает как раньше.
+      dconf.settings."org/blueman/general".plugin-list = [ "!StatusIcon" ];
 
       systemd.user.services.blueman-applet = {
         Unit = {
