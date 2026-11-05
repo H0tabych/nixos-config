@@ -1,8 +1,11 @@
 # Фича: tunnel-xray · Слот: tunnel · Домен: network · Классы: N · Для: хоста с пресетом tunnel
 # Контракт: VPN-CLI-1..9, VPN-CLI-11, VPN-MOD-2/3/4/12, NET-1..4, NET-7, NET-9, SEC-4,
-# VPN-RTE-1..8, VPN-DNS-1, VPN-DNS-3..5, ADR-41. Единственный владелец юнита
-# tunnel-xray и его конфига (VPN-CLI-1). Конфиг рендерится sops-nix из шаблона при
-# старте — в /nix/store попадают только плейсхолдеры (VPN-CLI-2).
+# VPN-RTE-1..9, VPN-DNS-1, VPN-DNS-3..5, VPN-DNS-8, VPN-MOD-8..11, NET-13, ADR-40/41.
+# Единственный владелец юнита tunnel-xray и его конфигов (VPN-CLI-1). Конфиг
+# маршрута tunnel рендерится sops-nix из шаблона при активации — в /nix/store попадают
+# только плейсхолдеры (VPN-CLI-2). Конфиг маршрута direct без секретов лежит в
+# /nix/store; какой из двух взять — решает обёртка запуска по состоянию маршрута
+# (my.tunnel.route.stateFile, им владеет route-switch).
 # Пакет — из нестабильного канала (VPN-CLI-11, ARCH-14): в 26.05 версия 26.3.27, а
 # выход обновляется до версии с исправлениями безопасности, и расхождение версий
 # клиента и выхода — частая причина сбоев (VPN-CLI-12). Конфиг от версии не зависит,
@@ -46,81 +49,42 @@ in
       inherit (cfg.killswitch) mark;
       pkg = pkgs.unstable.xray;
       ph = name: config.sops.placeholder.${name};
-      policy = import ./_tunnel-xray-policy.nix { inherit lib; };
-      nixProxy = import ./_tunnel-xray-nix-proxy.nix { inherit lib; };
       routes = import ./_tunnel-xray-routes.nix { inherit pkgs; };
+      nixProxy = import ./_tunnel-xray-nix-proxy.nix { inherit lib; };
+      policy =
+        (import ./_tunnel-xray-policy.nix { inherit lib; })
+        // (import ./_tunnel-xray-inbounds.nix { inherit lib; });
+      configs = (import ./_tunnel-xray-config.nix { inherit lib policy; }).mkConfigs { inherit cfg ph; };
 
-      queryStrategy = if cfg.ipv6 == "blocked" then "UseIPv4" else "UseIP";
+      # Маршрут direct (NET-13): секретов нет, конфиг целиком в /nix/store и не
+      # зависит от ключей sops (VPN-MOD-11).
+      directConfig = pkgs.writeText "tunnel-xray-direct.json" (builtins.toJSON configs.direct);
 
-      xrayConfig = {
-        # access = "none": иначе адресат каждого соединения попадает в журнал на любом
-        # уровне (VPN-CLI-8), а в M2 это весь трафик машины.
-        log = {
-          loglevel = "warning";
-          access = "none";
-        };
-        dns = policy.mkDns {
-          inherit (cfg.policy) dnsDirect direct;
-          inherit queryStrategy;
-          inherit (policy) dohResolvers;
-          endpoint = ph "tunnel.endpoint";
-        };
-        inbounds = policy.mkInbounds { inherit (cfg) local mode interface; };
-        outbounds = [
-          {
-            tag = "proxy";
-            protocol = "vless";
-            settings = {
-              vnext = [
-                {
-                  address = ph "tunnel.endpoint";
-                  port = 443; # константа контракта VPN-SRV-3, не секрет
-                  users = [
-                    {
-                      id = ph "tunnel.clientId";
-                      encryption = "none";
-                      flow = "xtls-rprx-vision";
-                    }
-                  ];
-                }
-              ];
-            };
-            streamSettings = {
-              network = "tcp";
-              security = "reality";
-              realitySettings = {
-                serverName = ph "tunnel.serverName";
-                publicKey = ph "tunnel.serverKey";
-                shortId = ph "tunnel.shortId";
-                fingerprint = ph "tunnel.fingerprint";
-                spiderX = "/";
-                # Пустая строка = проверка выключена. Заполнить ключом проверки
-                # сразу после включения подписи на выходе (VPN-SRV-3).
-                mldsa65Verify = "";
-              };
-              # domainStrategy: если адрес выхода — имя, его разрешает DNS-секция
-              # этого конфига, а не системный резолвер (см. mkDns).
-              sockopt = {
-                inherit mark;
-                domainStrategy = queryStrategy;
-              };
-            };
-          }
-        ]
-        ++ policy.mkOutbounds {
-          inherit (cfg) mode;
-          inherit mark queryStrategy;
-        };
-        routing = {
-          domainStrategy = if m2 then "AsIs" else "IPOnDemand";
-          rules = policy.mkRoutingRules (
-            cfg.policy
-            // {
-              inherit (cfg) mode interface;
-            }
-          );
-        };
-      };
+      # Credential не абсолютным путём: по systemd.exec(5) его отсутствие не фатально
+      # (поиск в /run/credstore/), а клиенту в direct ключи не нужны. В tunnel без них
+      # старт отклоняется ниже, как и раньше.
+      credentialId = "tunnel-xray.json";
+
+      # Выбор конфига при старте по состоянию маршрута (VPN-MOD-9): нет файла или любое
+      # значение, кроме direct, — tunnel. Одна функция для проверки ядром и для запуска.
+      startScript = pkgs.writeShellScript "tunnel-xray-start" ''
+        route=tunnel
+        [ "$(${pkgs.coreutils}/bin/cat ${cfg.route.stateFile} 2>/dev/null)" = direct ] && route=direct
+        if [ "$route" = direct ]; then
+          conf=${directConfig}
+        else
+          conf="$CREDENTIALS_DIRECTORY/${credentialId}"
+          if [ ! -r "$conf" ]; then
+            echo "tunnel-xray: маршрут tunnel, но конфиг с секретами не отрисован (ключи sops, VPN-MOD-11)" >&2
+            exit 1
+          fi
+        fi
+        echo "tunnel-xray: маршрут $route"
+        if [ "$1" = test ]; then
+          exec ${pkg}/bin/xray run -test -c "$conf"
+        fi
+        exec ${pkg}/bin/xray run -c "$conf"
+      '';
     in
     {
       assertions = [
@@ -147,10 +111,11 @@ in
         "tunnel.shortId".sopsFile = secretsFile "hosts/${config.my.host.name}.yaml";
       };
 
+      # Маршрут tunnel: единственный конфиг с секретами. sops-nix создаёт каталог.
       sops.templates.tunnel-xray = {
-        path = "/run/secrets/rendered/tunnel-xray.json";
+        path = "/run/credstore/${credentialId}";
         mode = "0400";
-        content = builtins.toJSON xrayConfig;
+        content = builtins.toJSON configs.tunnel;
         restartUnits = [ "tunnel-xray.service" ];
       };
 
@@ -167,6 +132,12 @@ in
       networking.nftables.tables.tunnel-marks = lib.mkIf m2 (routes.mkMarksTable { inherit mark; });
       boot.kernel.sysctl = lib.mkIf m2 { "net.ipv4.conf.all.src_valid_mark" = 1; };
 
+      # Конфиг direct публичен (секретов нет): тест tunnel-config проверяет его ядром.
+      system.build.tunnelXrayDirectConfig = directConfig;
+
+      # Юнит, который route-switch перезапускает при смене маршрута (ADR-34).
+      my.tunnel.route.restartUnits = [ "tunnel-xray.service" ];
+
       systemd.services.tunnel-xray = {
         description = "Клиент туннеля (VLESS + Reality, режим ${mode})";
         wantedBy = [ "multi-user.target" ];
@@ -179,9 +150,9 @@ in
         wants = [ "network-online.target" ] ++ lib.optional m2 "tunnel-routes.service";
         serviceConfig = {
           DynamicUser = true;
-          LoadCredential = "config.json:${config.sops.templates.tunnel-xray.path}";
-          ExecStartPre = "${pkg}/bin/xray run -test -c %d/config.json";
-          ExecStart = "${pkg}/bin/xray run -c %d/config.json";
+          LoadCredential = credentialId;
+          ExecStartPre = "${startScript} test";
+          ExecStart = "${startScript} run";
           # "+": адрес и маршрут ставит root, основной процесс остаётся с минимумом
           # прав (VPN-CLI-5).
           ExecStartPost = lib.optional m2 "+${routes.mkLinkUp { inherit (cfg) interface; }}";

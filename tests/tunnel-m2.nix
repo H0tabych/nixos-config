@@ -218,7 +218,7 @@ pkgs.testers.runNixOSTest {
         # ARCH-13 (обоснование mkForce): шаблона sops здесь нет, конфиг клиента
         # подключается отрисованным.
         systemd.services.tunnel-xray.serviceConfig.LoadCredential =
-          lib.mkForce "config.json:${clientConfig "m2"}";
+          lib.mkForce "tunnel-xray.json:${clientConfig "m2"}";
 
         # Приложение, которое пытается выйти раньше клиента туннеля: на холодном старте
         # его трафик не должен дойти до провайдера (VPN-A8).
@@ -234,7 +234,7 @@ pkgs.testers.runNixOSTest {
         specialisation.m1.configuration = {
           my.tunnel.mode = lib.mkForce "m1";
           systemd.services.tunnel-xray.serviceConfig.LoadCredential =
-            lib.mkOverride 10 "config.json:${clientConfig "m1"}";
+            lib.mkOverride 10 "tunnel-xray.json:${clientConfig "m1"}";
         };
 
         security.pki.certificateFiles = [ "${certs}/ca.crt" ];

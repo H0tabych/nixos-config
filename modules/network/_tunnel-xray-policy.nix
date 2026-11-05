@@ -1,5 +1,5 @@
 # Приватная часть владельца: tunnel-xray · Домен: network
-# Контракт: VPN-RTE-1..8, VPN-DNS-1, VPN-DNS-3, VPN-DNS-5. Чистые данные и
+# Контракт: VPN-RTE-1..9, VPN-DNS-1, VPN-DNS-3, VPN-DNS-5, VPN-DNS-8. Чистые данные и
 # функции построения DNS- и routing-секций конфига Xray из my.tunnel.policy.*
 # (STR-6): tunnel-xray.nix растёт за счёт данных политики, поэтому они здесь,
 # а не в самом юните. Секретов и vnext/users нет — это держит только владелец
@@ -26,6 +26,8 @@ in
   # endpoint — адрес выхода. Если это имя, его разрешает прямой резолвер, а не
   # системный: в M2 системный резолвер работает через этот же клиент, и получился
   # бы замкнутый круг. Для IP-литерала запись не срабатывает никогда.
+  # route = "direct" (VPN-DNS-8): все имена разрешает резолвер локальной юрисдикции,
+  # шифрованного DNS внутри туннеля нет, потому что нет туннеля; имени выхода тоже нет.
   mkDns =
     {
       dnsDirect,
@@ -33,78 +35,25 @@ in
       dohResolvers,
       queryStrategy,
       endpoint,
+      route,
     }:
-    {
-      servers = [
-        {
-          address = dnsDirect;
-          domains = direct ++ [ "full:${endpoint}" ];
-          skipFallback = true;
-        }
-      ]
-      ++ dohResolvers;
-      inherit queryStrategy;
-    };
-
-  # Слушатели локального режима: только loopback, адреса и порты — из
-  # my.tunnel.local.* (NET-4, VPN-CLI-9). sniffing включён на SOCKS-входе, он
-  # получает соединения по IP; у HTTP-прокси имя хоста есть в самом запросе,
-  # поэтому там не нужен (VPN-CLI-10). sock-in/http-in не убираются в M2 —
-  # они не мешают (слушают только loopback), а убирать их означало бы менять
-  # контракт my.tunnel.local.* ради минимального выигрыша.
-  # tun-in (M2): системный захват трафика. В settings только name и mtu: адрес и
-  # маршруты задаёт ОС, так конфиг не зависит от версии ядра. routeOnly (VPN-RTE-3): домен из sniffing нужен только правилам, цель
-  # остаётся исходным IP, иначе правила по IP не сработали бы на этапе без
-  # разрешения имён.
-  mkInbounds =
-    {
-      local,
-      mode,
-      interface,
-    }:
-    [
+    if route == "direct" then
       {
-        tag = "sock-in";
-        listen = local.socks.address;
-        port = local.socks.port;
-        protocol = "socks";
-        settings = {
-          udp = true;
-          auth = "noauth";
-        };
-        sniffing = {
-          enabled = true;
-          destOverride = [
-            "http"
-            "tls"
-          ];
-        };
+        servers = [ dnsDirect ];
+        inherit queryStrategy;
       }
+    else
       {
-        tag = "http-in";
-        listen = local.http.address;
-        port = local.http.port;
-        protocol = "http";
-        settings = { };
-      }
-    ]
-    ++ lib.optional (mode == "m2") {
-      tag = "tun-in";
-      protocol = "tun";
-      settings = {
-        inherit (interface) name;
-        mtu = 1500;
+        servers = [
+          {
+            address = dnsDirect;
+            domains = direct ++ [ "full:${endpoint}" ];
+            skipFallback = true;
+          }
+        ]
+        ++ dohResolvers;
+        inherit queryStrategy;
       };
-      sniffing = {
-        enabled = true;
-        routeOnly = true;
-        destOverride = [
-          "http"
-          "tls"
-          "quic"
-        ];
-      };
-    };
 
   # Метка на всех исходящих, а не только на соединении с выходом (VPN-KS-10): без
   # неё прямой трафик клиента в M2 попал бы в таблицу туннеля и зациклился.
@@ -114,6 +63,8 @@ in
       queryStrategy,
       mode,
       mark,
+      route,
+      dnsDirect,
     }:
     [
       {
@@ -136,6 +87,8 @@ in
     # DNS-секцию этого конфига (VPN-DNS-1). Других типов она не умеет, и по умолчанию
     # на них уходил бы пустой ответ, поэтому TXT, MX, SRV и прочие идут через туннель
     # к резолверу по DoT (VPN-DNS-9). Без разбора по зонам: это не адресная политика.
+    # Маршрут direct (VPN-DNS-8): туннеля нет, поэтому остальные типы уходят тому же
+    # резолверу локальной юрисдикции напрямую, с меткой клиента (VPN-KS-10).
     ++ lib.optional (mode == "m2") {
       tag = "dns-out";
       protocol = "dns";
@@ -147,15 +100,30 @@ in
           }
           { action = "direct"; }
         ];
-        rewriteNetwork = "tcp";
-        rewriteAddress = otherTypesResolver;
-        rewritePort = 853;
-      };
-      streamSettings = {
-        security = "tls";
-        tlsSettings.serverName = otherTypesResolver;
-        sockopt.dialerProxy = "proxy";
-      };
+      }
+      // (
+        if route == "direct" then
+          {
+            rewriteNetwork = "udp";
+            rewriteAddress = dnsDirect;
+            rewritePort = 53;
+          }
+        else
+          {
+            rewriteNetwork = "tcp";
+            rewriteAddress = otherTypesResolver;
+            rewritePort = 853;
+          }
+      );
+      streamSettings =
+        if route == "direct" then
+          { sockopt = { inherit mark; }; }
+        else
+          {
+            security = "tls";
+            tlsSettings.serverName = otherTypesResolver;
+            sockopt.dialerProxy = "proxy";
+          };
     };
 
   # Порядок — VPN-RTE-2: домены выше IP, явный catch-all последним. Пустые
@@ -176,6 +144,7 @@ in
       dnsDirect,
       mode,
       interface,
+      route,
       ...
     }:
     lib.optionals (mode == "m2") [
@@ -194,9 +163,11 @@ in
       domain = block;
       outboundTag = "block";
     }
+    # VPN-RTE-9: в маршруте direct эти ресурсы доступны только через туннель, поэтому
+    # отказ приходит сразу (KS-3), а не уходит напрямую.
     ++ lib.optional (proxy != [ ]) {
       domain = proxy;
-      outboundTag = "proxy";
+      outboundTag = if route == "direct" then "block" else "proxy";
     }
     ++ lib.optional (direct != [ ]) {
       domain = direct;
@@ -217,7 +188,7 @@ in
       }
       {
         network = "tcp,udp";
-        outboundTag = "proxy";
+        outboundTag = if route == "direct" then "direct" else "proxy";
       }
     ];
 }

@@ -5,6 +5,9 @@
 # config.sops.placeholder у sops-nix — чистая функция от имени секрета, подстановка
 # фиктивных значений идёт по тексту плейсхолдера в уже отрисованном конфиге.
 #
+# Конфиг маршрута direct (NET-13, VPN-MOD-11) секретов не содержит и проверяется ядром
+# как есть, без подстановки значений, в обоих режимах.
+#
 # M2 проверяется здесь же, в песочнице сборки: начиная с версий, где устройство
 # создаётся при старте, а не при разборе конфига, `run -test` не требует
 # CAP_NET_ADMIN (проверено на 26.10.31). На 26.3.27 он падал бы «operation not
@@ -55,6 +58,9 @@ let
     host: name: values:
     pkgs.writeText "tunnel-xray-${name}.json" (render host (fixtures.valid // values));
 
+  directM1 = m1Host.config.system.build.tunnelXrayDirectConfig;
+  directM2 = m2Host.config.system.build.tunnelXrayDirectConfig;
+
   validConfig = writeConfig m1Host "valid" { };
   validM2Config = writeConfig m2Host "valid-m2" { };
   invalidKeyConfig = writeConfig m1Host "invalid-key" fixtures.invalidKey;
@@ -71,6 +77,17 @@ pkgs.runCommand "tunnel-config"
 
     echo "VPN-OPS-1: то же для режима M2"
     xray run -test -c ${validM2Config}
+
+    for conf in ${directM1} ${directM2}; do
+      echo "VPN-CLI-4, VPN-MOD-11: конфиг direct проходит проверку ядром без секретов ($conf)"
+      xray run -test -c "$conf"
+
+      echo "VPN-CLI-2: в конфиге direct нет плейсхолдеров секретов и исходящего к выходу"
+      if grep -q 'SOPS\|vless\|reality' "$conf"; then
+        echo "конфиг direct не должен содержать секретов и соединения с выходом" >&2
+        exit 1
+      fi
+    done
 
     echo "VPN-A14: неверный ключ проверки выхода должен быть отклонён"
     if xray run -test -c ${invalidKeyConfig}; then
