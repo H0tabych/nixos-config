@@ -15,7 +15,6 @@ in
     imports = [
       n.session-hyprland
       n.display-manager-sddm
-      n.bar-waybar
       n.lockscreen-hyprlock
       n.idle-hypridle
       n.polkit-agent-hyprpolkitagent
@@ -36,6 +35,7 @@ in
       hm.osd-swayosd
       hm.automount-agent-udiskie
       hm.bluetooth-manager-blueman
+      hm.bar-eww
       hm.terminal-foot
       hm.file-manager-yazi
       hm.btop
