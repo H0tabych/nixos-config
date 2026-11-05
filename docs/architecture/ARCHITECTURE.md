@@ -807,7 +807,7 @@ Python, SQL, C/C++, Rust.
 - `AQ_DRM_DEVICES` — список через двоеточие: использовать udev-симлинки без двоеточий, а не пути `by-path` и не `cardN` (DESK-5).
 
 **NVIDIA / гибридная графика**
-- Открытые модули ядра (архитектура Turing поддерживается), modesetting, `powerManagement.enable` (нужен и для гибернации), PRIME offload + `nvidia-offload`.
+- Проприетарные модули ядра (`open = false`) и GSP-прошивка отключена (`NVreg_EnableGpuFirmware=0`): RTD3 в открытых модулях NVIDIA поддерживает только с Ampere, а с GSP он на Turing не включается; он нужен для простоя dGPU в suspended (A5, AI-A3, проверено 2026-11-05); modesetting, `powerManagement.enable` (нужен и для гибернации), PRIME offload + `nvidia-offload`.
 - `powerManagement.finegrained` — включать после теста энергопотребления и гибернации.
 - Steam: опция запуска `nvidia-offload %command%`.
 

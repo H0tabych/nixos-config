@@ -251,7 +251,8 @@ nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrName
 ### Тест `finegrained` (AI-A3)
 
 NVIDIA заявляет RTD3 в открытых модулях только с Ampere ([README 595](https://download.nvidia.com/XFree86/Linux-x86_64/595.58.03/README/kernel_open.html)),
-а у `sgms-laptop` Turing и `open = true`. Поэтому тест в два этапа. Проприетарные модули
+а у `sgms-laptop` Turing. Поэтому тест в два этапа. Этап А на открытых модулях (2026-11-05,
+драйвер 595.71.05) дал `Runtime D3 status: Not supported`, `runtime_status = active`. Проприетарные модули
 Turing поддерживают.
 
 Условия замера: батарея, внешний монитор отключён (hosts/sgms-laptop.md), 10 минут простоя.
@@ -268,7 +269,15 @@ upower -i "$(upower -e | grep BAT)" | grep energy-rate
 |---|---|---|---|---|
 | База | `finegrained = false` | active | Disabled by default | Снять |
 | А | `finegrained = true` | Снять | Снять | Снять |
-| Б, если А не дал suspended | ещё и `open = false`, при необходимости `NVreg_EnableGpuFirmware=0` | Снять | Снять | Снять |
+| А (2026-11-05) | `open = true`, `finegrained = true` | active, `control = auto` | **Not supported** | Не снимали |
+| Б (2026-11-05) | `open = false`, `finegrained = true`; `license: NVIDIA`, `DynamicPowerManagement: 2` | active, `control = auto` | **Not supported** | 18,0 Вт |
+| Б2 (2026-11-05) | то же и `NVreg_EnableGpuFirmware=0` | **suspended**, `control = auto`, `runtime_suspended_time` 746 289 мс | **Enabled (fine-grained)** | 15,5 Вт (единичный замер; база 18,0 Вт) |
+
+Причина `Not supported` — GSP-прошивка: с ней RTD3 на Turing не включается ни на открытых, ни на
+проприетарных модулях. Принят вариант Б2. Остаётся AI-A5 (три цикла гибернации с инференсом на GPU),
+AI-A4 (игра) и проверка CUDA без GSP (A7).
+
+Перед Б2 проверено (read-only): chassis_type 10, у корневого порта `PEG0` есть `power_resources_D0` и `power_resources_D3hot` (`_PR0/_PR3`), чипсет HM470, Turing, ядро 6.18.60, CONFIG_PM, persistenced выключен. Условия README 595 выполнены, а драйвер всё равно пишет `Not supported`.
 
 Этап А и Б применяются через `just boot` и перезагрузку: параметры модуля читаются при его
 загрузке. Этап Б меняет запись в A.6 Архитектуры и требует заново проверить A7 (CUDA).
