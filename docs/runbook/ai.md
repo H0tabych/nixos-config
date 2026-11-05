@@ -184,9 +184,9 @@ done | sort -n
 |---|---|---|
 | AI-A1 | Да | R8.8, раздел 7 |
 | AI-A2 | Да, кроме `local-chat` | Раздел 5; роль на этом классе не объявлена |
-| AI-A3 | **Открыт частично** | Модели выгружаются (`/api/ps` пуст); GPU не засыпает, см. раздел 8 |
-| AI-A4 | Отметка R8.3 | Хук `game-optimizer` вызывает `inference-release` |
-| AI-A5 | **Открыт частично** | Три цикла на GPU (коммит R8.2); пункт про kill switch требует M2 |
+| AI-A3 | Да (2026-11-05) | После `inference-release` `runtime_status = suspended`, `Runtime D3 status: Enabled (fine-grained)`; нужны проприетарные модули и `NVreg_EnableGpuFirmware=0`, раздел 8 |
+| AI-A4 | Да (2026-11-05) | Bannerlord через Steam: `nvidia-offload gamemoderun mangohud %command%`; во время игры `/api/ps` пуст, после игры GPU `suspended`, FIM загрузилась по требованию |
+| AI-A5 | **Открыт частично** | Три цикла hibernate подряд с моделью в VRAM пройдены 2026-11-05 (без GSP): `size` равен `size_vram`, без ручных действий. Пункт про kill switch требует M2 |
 | AI-A6 | Отметка R8.5 | |
 | AI-A7, AI-A8 | Отметка R8.6 | `tests/agent-sandbox.nix`; для роли AI-SBX-12 набор урезан решением владельца |
 | AI-A9 | **Открыт частично** | Облачная роль проверена в M1; проверка в M2 ждёт гейт 7.3 (ADR-35) |
@@ -234,7 +234,7 @@ nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrName
 
 | Правило | Что не выполняется | Что сделать |
 |---|---|---|
-| AI-A3, AI-RES-3 | dGPU не уходил в suspended после выгрузки: при `finegrained = false` на устройстве `power/control = on`, `runtime_status = active`, `Runtime D3 status: Disabled by default` (проверено 2026-11-05) | Тест ниже. Блокирует AI-A3 в G8 |
+| ~~AI-A3, AI-RES-3~~ | Закрыто 2026-11-05. Раньше dGPU не уходил в suspended: при `finegrained = false` `power/control = on`, `Runtime D3 status: Disabled by default` | Решение — тест ниже, этап Б2 |
 | AI-A5, AI-A9 | Части, зависящие от M2 | Гейт 7.3 на машине (ADR-41) |
 | AI-INF-8, STO-1, STO-8 | Модели лежат в `/var/lib/ollama/models`, то есть на `@rootfs`: попадают в снимки корня с бюджетом 10 ГиБ. `backup` не читает `modelsDir` | Отдельный `fix:`, см. ниже |
 
