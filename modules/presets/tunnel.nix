@@ -13,6 +13,7 @@ in
       n.tunnel-xray
       n.dns-resolver
       n.killswitch
+      n.route-switch
     ];
   };
 }

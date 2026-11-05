@@ -93,6 +93,21 @@ _: {
           };
         };
 
+        # Маршрут (NET-13) — не опция сборки, а состояние времени выполнения; здесь
+        # только его факты (ARCH-5): путь файла и опция-интерфейс (ADR-34).
+        route = {
+          stateFile = lib.mkOption {
+            type = lib.types.str;
+            default = "/run/tunnel/route";
+            description = "Файл состояния маршрута в каталоге времени выполнения (VPN-MOD-9).";
+          };
+          restartUnits = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+            description = "Юниты, которые route-switch перезапускает при смене маршрута; вкладывает реализация tunnel-<р>.";
+          };
+        };
+
         ipv6 = lib.mkOption {
           type = lib.types.enum [
             "blocked"
