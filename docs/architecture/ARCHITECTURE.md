@@ -714,6 +714,7 @@ let n = config.flake.modules.nixos; in {
 | ADR-39 | **`nix-daemon` получает прокси-переменные M1 отдельным, временным механизмом** (до перехода на M2). Измерено на машине: параллельные запросы `nix-daemon` к бинарному кэшу CUDA идут через туннель 25/25, напрямую — 16/25 (троттлинг прямого пути из российской сети, не лимит кэша). Исключение из «одно место» (NET-10/VPN-MOD-4), снимается вместе с M2 | NET-10, VPN-MOD-4, AI-CC-1/2/3, docs/adr/ADR-039-nix-daemon-m1-proxy.md |
 | ADR-40 | **Маршрут туннеля — состояние времени выполнения** (`tunnel`/`direct`, NET-13), независимое от режима. Переключается без пересборки, только администратором; после перезагрузки — `tunnel`. Клиент работает при обоих маршрутах, kill switch не снимается. Инцидент 2026-11-04: после смены адреса выхода сборка стала невозможна — новый секрет применяется только активацией, а сборке нужна сеть через мёртвый выход | NET-5, NET-6, NET-8, NET-13, VPN-MOD-8…11, VPN-RES-3, VPN-RES-7, VPN-RES-8, docs/adr/ADR-040-tunnel-route-switch.md |
 | ADR-41 | **Режим M2: нативный TUN, адрес и маршруты задаёт ОС, собственный трафик клиента исключён меткой сокета и политикой маршрутизации.** Вердикт гейта 7.3 от 2026-10-14 отозван: сеть терялась из-за дефектов конфигурации, а не из-за версии ядра туннеля. Файрвол на nftables в обоих режимах. R9.6 выполняется до включения M2 | NET-7, NET-8, VPN-MOD-12, VPN-KS-2, VPN-KS-11, VPN-DNS-2, VPN-DNS-9, VPN-CLI-11, docs/adr/ADR-041-tunnel-m2-policy-routing.md |
+| ADR-42 | **Панель — eww вместо waybar** (замена реализации слота `bar`, SLOT-3). Панель, окно сети (маршрут NET-13, Wi-Fi) и календарь — одна конфигурация eww в dotfiles (`eww/`); Bluetooth — модуль панели, значок blueman из трея убран (плагин `StatusIcon` отключён); Nix-часть — фича `bar-eww` (H) вместо `bar-waybar`, без патча под Lua-диспетчер Hyprland. Обработчики eww убиваются через 200 мс — долгие команды запускаются отдельным сеансом | Живая проверка 2026-11-05/06: значок маршрута пропадал в `direct` (пустой текст скрывает модуль waybar), окно с переключателями у значка waybar не умеет; замена затрагивает только фичу, пресет и каталог dotfiles (A18) | SLOT-3, SLOT-4, DOT-3, DESK-9, NET-13, docs/adr/ADR-042-panel-eww.md |
 
 Конкретные программы и версии (реализации слотов) в реестр ADR не входят — они в Приложении A.
 
@@ -760,7 +761,7 @@ let n = config.flake.modules.nixos; in {
 |---|---|
 | `session` | Hyprland + UWSM |
 | `display-manager` | SDDM (+ тема из палитры) |
-| `bar` / `notifier` / `launcher` | Waybar / mako / rofi |
+| `bar` / `notifier` / `launcher` | eww / mako / rofi |
 | `lockscreen` / `idle` / `wallpaper` | hyprlock / hypridle / hyprpaper |
 | `screenshot` / `clipboard` / `osd` / `polkit-agent` | grim + slurp + swappy / cliphist + wl-clipboard / swayosd / hyprpolkitagent |
 | `automount-agent` | udiskie |
@@ -780,7 +781,7 @@ let n = config.flake.modules.nixos; in {
 
 ### A.4 Начальный реестр dotfiles
 
-`nvim`, `zsh`, `foot`, `hypr` (композитор, idle, lock, wallpaper), `waybar`, `rofi`, `mako`, `swayosd`, `starship`, `yazi`, `mpv`, `git`, `mangohud`, `lazygit`, `btop`.
+`nvim`, `zsh`, `foot`, `hypr` (композитор, idle, lock, wallpaper), `eww` (панель и окна сети/календаря), `net` (скрипты подсистемы туннеля), `rofi`, `mako`, `swayosd`, `starship`, `yazi`, `mpv`, `git`, `mangohud`, `lazygit`, `btop`.
 
 ### A.5 Языки и шаблоны проектов
 
@@ -812,7 +813,7 @@ Python, SQL, C/C++, Rust.
 - Steam: опция запуска `nvidia-offload %command%`.
 
 **Компоненты оболочки**
-- waybar: `include` + CSS `@import`; foot, mako, mpv — собственные `include` (`ПРОВЕРИТЬ` по версиям). Адаптеры рабочих столов Hyprland — отдельным файлом в `waybar/`.
+- eww: стиль — один сгенерированный CSS (относительный `@import` eww не разрешает, ADR-42); foot, mako, mpv — собственные `include` (`ПРОВЕРИТЬ` по версиям). Адаптеры рабочих столов Hyprland — скрипты в `eww/scripts/`.
 
 **zsh / редактор**
 - `ZDOTDIR` — через `programs.zsh.shellInit` (`/etc/zshenv`); HM `programs.zsh` не используется; интеграция direnv с zsh отключена, хук — в dotfiles.
@@ -836,7 +837,7 @@ Python, SQL, C/C++, Rust.
 
 ### A.7 ПРОВЕРИТЬ (профиль)
 
-env-файлы UWSM; udev-симлинки iGPU; `include` в waybar/foot/mako/mpv выбранных версий; имена опций `services.ollama.*`; Widevine/4K в Firefox; адрес и ключ бинарного кэша CUDA.
+env-файлы UWSM; udev-симлинки iGPU; `include` в foot/mako/mpv выбранных версий; имена опций `services.ollama.*`; Widevine/4K в Firefox; адрес и ключ бинарного кэша CUDA.
 
 ---
 
