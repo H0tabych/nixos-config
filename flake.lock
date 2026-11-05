@@ -23,11 +23,11 @@
     "dotfiles": {
       "flake": false,
       "locked": {
-        "lastModified": 1793912364,
-        "narHash": "sha256-/1yMNo9ONLvIUAbbn5CUK/s63OKj6ybmZWOtgKIOYDo=",
+        "lastModified": 1793917901,
+        "narHash": "sha256-7Xdeu0M+HmmHzrY3YtOQVceZjbCwxpD9gq+101hAin0=",
         "ref": "refs/heads/main",
-        "rev": "08943cdf230361fc9501966fe8bb425885ad3a7a",
-        "revCount": 55,
+        "rev": "24dfa79be69af609cae22663592a46eda59301d7",
+        "revCount": 57,
         "type": "git",
         "url": "ssh://git@github.com/H0tabych/.dotfiles.git"
       },
