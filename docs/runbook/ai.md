@@ -271,7 +271,11 @@ upower -i "$(upower -e | grep BAT)" | grep energy-rate
 | А | `finegrained = true` | Снять | Снять | Снять |
 | А (2026-11-05) | `open = true`, `finegrained = true` | active, `control = auto` | **Not supported** | Не снимали |
 | Б (2026-11-05) | `open = false`, `finegrained = true`; `license: NVIDIA`, `DynamicPowerManagement: 2` | active, `control = auto` | **Not supported** | 18,0 Вт |
-| Б2 | то же и `gsp.enable = false` (`NVreg_EnableGpuFirmware=0`) | Снять | Снять | Снять |
+| Б2 (2026-11-05) | то же и `NVreg_EnableGpuFirmware=0` | **suspended**, `control = auto`, `runtime_suspended_time` 746 289 мс | **Enabled (fine-grained)** | 15,5 Вт (единичный замер; база 18,0 Вт) |
+
+Причина `Not supported` — GSP-прошивка: с ней RTD3 на Turing не включается ни на открытых, ни на
+проприетарных модулях. Принят вариант Б2. Остаётся AI-A5 (три цикла гибернации с инференсом на GPU),
+AI-A4 (игра) и проверка CUDA без GSP (A7).
 
 Перед Б2 проверено (read-only): chassis_type 10, у корневого порта `PEG0` есть `power_resources_D0` и `power_resources_D3hot` (`_PR0/_PR3`), чипсет HM470, Turing, ядро 6.18.60, CONFIG_PM, persistenced выключен. Условия README 595 выполнены, а драйвер всё равно пишет `Not supported`.
 

@@ -28,10 +28,10 @@ _: {
         # 2026-11-05): NVIDIA заявляет RTD3 в открытых модулях только с Ampere. Проприетарные
         # модули Turing поддерживают.
         open = false;
-        # Этап Б2 (2026-11-05): и на проприетарных модулях статус остался `Not supported`, хотя
-        # условия README выполнены (ноутбук, _PR0/_PR3 у PEG0, HM470, Turing, ядро 6.18).
-        # Единственная зацепка из сообщений пользователей Turing — GSP-прошивка. Не помогло —
-        # убрать эти две строки и откатить finegrained (RK4).
+        # GSP отключён: с ним RTD3 на Turing не включается. Проверено на машине 2026-11-05:
+        # при GSP и proprietary — `Runtime D3 status: Not supported`, без GSP — `Enabled
+        # (fine-grained)`, `runtime_status = suspended`, хотя условия README выполнены и так
+        # (ноутбук, _PR0/_PR3 у PEG0, HM470, Turing, ядро 6.18).
         # gsp.enable = false в этом nixpkgs лишь не поставляет файлы прошивки; параметр
         # драйвера NixOS не задаёт (ПРОВЕРЕНО: NVreg_EnableGpuFirmware в nixos/ нет),
         # поэтому он выставлен явно ниже.
@@ -39,8 +39,8 @@ _: {
         modesetting.enable = true;
         powerManagement = {
           enable = true;
-          # Результат читать в /proc/driver/nvidia/gpus/<шина>/power. Если и здесь не
-          # suspended и при отключённом GSP, откат на false (RK4).
+          # Результат читать в /proc/driver/nvidia/gpus/<шина>/power. Сбой гибернации или
+          # CUDA — откат на false (RK4).
           finegrained = true;
         };
       };
