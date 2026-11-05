@@ -270,7 +270,10 @@ upower -i "$(upower -e | grep BAT)" | grep energy-rate
 | База | `finegrained = false` | active | Disabled by default | Снять |
 | А | `finegrained = true` | Снять | Снять | Снять |
 | А (2026-11-05) | `open = true`, `finegrained = true` | active, `control = auto` | **Not supported** | Не снимали |
-| Б | `open = false`, `finegrained = true`; если и здесь Not supported, то ещё `hardware.nvidia.gsp.enable = false` | Снять | Снять | Снять |
+| Б (2026-11-05) | `open = false`, `finegrained = true`; `license: NVIDIA`, `DynamicPowerManagement: 2` | active, `control = auto` | **Not supported** | 18,0 Вт |
+| Б2 | то же и `gsp.enable = false` (`NVreg_EnableGpuFirmware=0`) | Снять | Снять | Снять |
+
+Перед Б2 проверено (read-only): chassis_type 10, у корневого порта `PEG0` есть `power_resources_D0` и `power_resources_D3hot` (`_PR0/_PR3`), чипсет HM470, Turing, ядро 6.18.60, CONFIG_PM, persistenced выключен. Условия README 595 выполнены, а драйвер всё равно пишет `Not supported`.
 
 Этап А и Б применяются через `just boot` и перезагрузку: параметры модуля читаются при его
 загрузке. Этап Б меняет запись в A.6 Архитектуры и требует заново проверить A7 (CUDA).
