@@ -251,7 +251,8 @@ nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrName
 ### Тест `finegrained` (AI-A3)
 
 NVIDIA заявляет RTD3 в открытых модулях только с Ampere ([README 595](https://download.nvidia.com/XFree86/Linux-x86_64/595.58.03/README/kernel_open.html)),
-а у `sgms-laptop` Turing и `open = true`. Поэтому тест в два этапа. Проприетарные модули
+а у `sgms-laptop` Turing. Поэтому тест в два этапа. Этап А на открытых модулях (2026-11-05,
+драйвер 595.71.05) дал `Runtime D3 status: Not supported`, `runtime_status = active`. Проприетарные модули
 Turing поддерживают.
 
 Условия замера: батарея, внешний монитор отключён (hosts/sgms-laptop.md), 10 минут простоя.
@@ -268,7 +269,8 @@ upower -i "$(upower -e | grep BAT)" | grep energy-rate
 |---|---|---|---|---|
 | База | `finegrained = false` | active | Disabled by default | Снять |
 | А | `finegrained = true` | Снять | Снять | Снять |
-| Б, если А не дал suspended | ещё и `open = false`, при необходимости `NVreg_EnableGpuFirmware=0` | Снять | Снять | Снять |
+| А (2026-11-05) | `open = true`, `finegrained = true` | active, `control = auto` | **Not supported** | Не снимали |
+| Б | `open = false`, `finegrained = true`; если и здесь Not supported, то ещё `hardware.nvidia.gsp.enable = false` | Снять | Снять | Снять |
 
 Этап А и Б применяются через `just boot` и перезагрузку: параметры модуля читаются при его
 загрузке. Этап Б меняет запись в A.6 Архитектуры и требует заново проверить A7 (CUDA).
