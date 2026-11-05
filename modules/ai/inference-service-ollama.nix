@@ -69,8 +69,23 @@
 
       environment.systemPackages = [ inferenceRelease ];
 
-      # AI-CMP-4: адрес инференса и роль→модель — в machine.d, не в dotfiles.
-      systemd.tmpfiles.rules = lib.concatMap (user: [
+      # AI-INF-8: каталог моделей лежит на томе данных, а не в состоянии сервиса, поэтому его
+      # владелец должен быть известен заранее. При DynamicUser UID выбирается при старте, и
+      # создать каталог с нужным владельцем нельзя. Поэтому у сервиса статическая учётная
+      # запись: systemd при DynamicUser=yes использует уже существующего пользователя с таким
+      # именем, а песочница сервиса (ProtectSystem=strict, ReadWritePaths на models) остаётся.
+      # Имя — сервисная учётная запись, не пользователь системы (ARCH-17).
+      services.ollama = {
+        user = "ollama";
+        group = "ollama";
+      };
+
+      # Первая строка — каталог моделей (AI-INF-8). Остальное — AI-CMP-4: адрес инференса и
+      # роль→модель пишутся в machine.d, не в dotfiles.
+      systemd.tmpfiles.rules = [
+        "d ${inference.modelsDir} 0750 ollama ollama - -"
+      ]
+      ++ lib.concatMap (user: [
         "L+ /home/${user}/.config/machine.d/ai-env - - - - ${pkgs.writeText "ai-env" ''
           # Сгенерировано Nix (inference-service-ollama, AI-CMP-4) — не редактируйте руками.
           export AI_INFERENCE_URL="http://${inference.host}:${toString inference.port}"

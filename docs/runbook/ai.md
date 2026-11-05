@@ -168,7 +168,7 @@ done | sort -n
 
 | Потребитель | Значение | Где |
 |---|---|---|
-| Модель `local-fast` | 0,92 ГиБ на диске | См. отступление AI-INF-8: сейчас `@rootfs`, по бюджету `@data` |
+| Модель `local-fast` | 0,92 ГиБ на диске | `@data`, каталог `/var/lib/nosnapshot/models`: вне снимков и бэкапа (AI-INF-8) |
 | Замыкание пакета инференса (CUDA) | 2,1 ГиБ | `@nix` |
 | VRAM во время работы модели | 1,09 из 4 ГиБ | Освобождается `keepAlive` или `inference-release` |
 | RAM демона и шлюза | Не измерено | Снять вручную: `systemctl status ollama.service`, `systemctl --user status llm-gateway` (строка `Memory`) |
@@ -225,8 +225,7 @@ nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrName
 Новый провайдер подтверждён на машине 2026-11-05: владелец применил поколение (`just test`),
 запрос роли `local-fast` из раздела 1 прошёл успешно.
 
-Оговорка: в `ai-facts` остаётся дефолт `modelsDir` с именем реализации. На работу заглушки
-он не влияет и уйдёт вместе с исправлением AI-INF-8.
+Дефолт `modelsDir` теперь без имени реализации: `/var/lib/nosnapshot/models` (AI-INF-8, раздел 8).
 
 ---
 
@@ -236,17 +235,38 @@ nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrName
 |---|---|---|
 | ~~AI-A3, AI-RES-3~~ | Закрыто 2026-11-05. Раньше dGPU не уходил в suspended: при `finegrained = false` `power/control = on`, `Runtime D3 status: Disabled by default` | Решение — тест ниже, этап Б2 |
 | AI-A5, AI-A9 | Части, зависящие от M2 | Гейт 7.3 на машине (ADR-41) |
-| AI-INF-8, STO-1, STO-8 | Модели лежат в `/var/lib/ollama/models`, то есть на `@rootfs`: попадают в снимки корня с бюджетом 10 ГиБ. `backup` не читает `modelsDir` | Отдельный `fix:`, см. ниже |
+| ~~AI-INF-8, STO-1, STO-8~~ | Закрыто 2026-11-05. Раньше модели лежали в `/var/lib/ollama/models` на `@rootfs` и попадали в снимки корня | Исправление ниже |
 
-Предлагаемое исправление AI-INF-8:
+### Исправление AI-INF-8 (2026-11-05)
 
-1. Дефолт `my.ai.inference.modelsDir` — каталог на томе `/var/lib/nosnapshot` без имени реализации.
-2. Права сервиса на этот каталог. У сервиса `DynamicUser`, поэтому механизм проверить сборкой.
-3. `backup` читает опцию для исключения (STO-8).
-4. Владелец применяет (OPS-3) и скачивает модель заново (раздел 4).
+1. `my.ai.inference.modelsDir` по умолчанию — `/var/lib/nosnapshot/models`, подкаталог тома данных (`@data`), который `backup` не снимает.
+2. У сервиса Ollama статическая учётная запись `ollama`: при `DynamicUser` владелец каталога на другом томе заранее неизвестен. Песочница сервиса сохраняется (`ProtectSystem=strict`, запись только в каталог моделей). Каталог создаёт `systemd-tmpfiles` с правами `0750`.
+3. `backup` читает `modelsDir` и не даёт собрать систему, если каталог лежит на подтоме из снимков (`rootfs`, `home`). Путь при этом не дублируется. Список моделей в снимки не попадает и составом: подтом `data` в btrbk не перечислен.
+4. Тест `tests/inference-models-dir.nix`: права, владелец и запись из песочницы сервиса.
 
-Откат: вернуть дефолт и снова `just test`; модель останется на старом месте, пока
-не удалена вручную.
+**Применение (OPS-3)** вы делаете после `just build`:
+
+```sh
+just test sgms-laptop
+ls -ld /var/lib/nosnapshot/models          # drwxr-x--- ollama ollama
+curl -s http://127.0.0.1:11434/api/tags    # модель появится сама: её догружает ollama-model-loader
+du -sh /var/lib/nosnapshot/models          # около 1 ГиБ
+```
+
+Если загрузчик не может скачать модель (в M1 он идёт мимо прокси), перенесите старую копию:
+
+```sh
+sudo systemctl stop ollama.service          # загрузчик привязан к нему и остановится тоже
+sudo cp -a --reflink=auto /var/lib/private/ollama/models/. /var/lib/nosnapshot/models/
+sudo chown -R ollama:ollama /var/lib/nosnapshot/models
+sudo systemctl start ollama.service
+```
+
+Когда модель на новом месте и `chk` из раздела выше проходит, **старую копию можно удалить**
+(`sudo rm -rf /var/lib/private/ollama/models`): необратимо, делать только после проверки. Старые снимки
+`@rootfs` хранят её до истечения срока (14 дней, 8 недель), отдельно их трогать не нужно.
+
+Откат: вернуть коммит и `just test`; модели останутся в каталоге данных.
 
 ### Тест `finegrained` (AI-A3)
 

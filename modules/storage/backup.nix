@@ -20,13 +20,45 @@
 # это почти бесплатно (CoW), но во внешнюю копию кэш уезжает. Снимается только
 # выделением ~/.cache в отдельный подтом — это правка layout, то есть разметки
 # (PNR-2), поэтому отложено; зафиксировать в реестре отступлений runbook.
+# AI-INF-8: каталог моделей (my.ai.inference.modelsDir, если подсистема ML есть на хосте)
+# обязан лежать вне перечисленных ниже подтомов. Опция читается только для проверки, путь
+# не дублируется: сборка не проходит, если каталог моделей попал в снимаемый подтом.
 # Зависимости: layout (btrfs, подтома rootfs/home/snapshots), host-facts
-# (my.host.name) — через config, без импорта фич (ARCH-3).
+# (my.host.name), ai-facts (my.ai.inference.modelsDir) — через config, без импорта фич
+# (ARCH-3).
 _: {
   flake.modules.nixos.backup =
     { config, lib, ... }:
     let
       topLevel = "/mnt/btrfs-top";
+
+      # Подтома, которые попадают в снимки (имена из настройки btrbk ниже).
+      snapshotted = [
+        "rootfs"
+        "home"
+      ];
+
+      # Подтом, на котором лежит каталог: монтирование с самым длинным совпадающим префиксом.
+      # null — подсистемы ML на хосте нет, проверять нечего.
+      modelsDir = lib.attrByPath [ "my" "ai" "inference" "modelsDir" ] null config;
+      coveringMounts =
+        if modelsDir == null then
+          [ ]
+        else
+          lib.sort (a: b: lib.stringLength a > lib.stringLength b) (
+            lib.filter (mp: mp == "/" || modelsDir == mp || lib.hasPrefix "${mp}/" modelsDir) (
+              lib.attrNames config.fileSystems
+            )
+          );
+      modelsSubvolume =
+        let
+          mp = lib.head coveringMounts;
+          subvols = lib.filter (lib.hasPrefix "subvol=") (config.fileSystems.${mp}.options or [ ]);
+        in
+        if coveringMounts == [ ] || subvols == [ ] then
+          null
+        else
+          lib.removePrefix "subvol=/" (lib.head subvols);
       # Опции btrfs действуют на всю ФС и задаются единообразно (STO-1), поэтому
       # берутся у уже описанного корня, а не переписываются литералом: иначе при
       # правке layout набор разъехался бы. Снимаются только привязка к конкретному
@@ -42,6 +74,12 @@ _: {
         {
           assertion = config.fileSystems ? "/" && config.fileSystems."/".fsType == "btrfs";
           message = "фича backup требует btrfs на / (фича layout): снимки делаются подтомами";
+        }
+        {
+          assertion = modelsSubvolume == null || !(lib.elem modelsSubvolume snapshotted);
+          message =
+            "my.ai.inference.modelsDir (${toString modelsDir}) лежит на подтоме ${toString modelsSubvolume}, "
+            + "который входит в снимки backup (STO-8, AI-INF-8): модели должны быть на томе данных вне снимков";
         }
       ];
 
@@ -83,10 +121,7 @@ _: {
             # сутки даже без изменений, что для `home`/`rootfs` пренебрежимо.
             snapshot_create = "always";
 
-            subvolume = {
-              rootfs = { };
-              home = { };
-            };
+            subvolume = lib.genAttrs snapshotted (_: { });
           };
         };
       };

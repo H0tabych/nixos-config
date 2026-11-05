@@ -2,7 +2,8 @@
 # Контракт: ARCH-4, AI_SUBSYSTEM.md §2.3, §3.6. Объявляет схему my.ai.* (аналог
 # host-facts) без значений и без пакетов. keepAlive — без default: явный выбор
 # хоста (STR-8 называет его примером значения, задаваемого прямо в hosts/<хост>.nix).
-# modelsDir — заглушка до отдельного тома storage/layout (AI-INF-8, STO-1).
+# modelsDir — на томе данных вне снимков и бэкапа (AI-INF-8, STO-1); backup проверяет это
+# assertion'ом, читая опцию.
 # gateway.cloudRoles (R8.5) — без значений: заполняет хост (P.1), читает
 # llm-gateway через osConfig (HM-класс).
 # Зависимости: —
@@ -28,10 +29,12 @@ _: {
           };
           modelsDir = lib.mkOption {
             type = lib.types.str;
-            default = "/var/lib/ollama/models";
+            default = "/var/lib/nosnapshot/models";
             description = ''
-              Каталог моделей (AI-INF-8). Заглушка до подключения отдельного
-              тома вне снимков и бэкапа (storage/layout, STO-1/STO-8).
+              Каталог моделей (AI-INF-8): подкаталог тома данных вне снимков и бэкапа
+              (storage/layout, STO-1/STO-8). Без имени реализации инференса. Переопределять
+              можно только каталогом на томе, который backup не снимает: иначе сборка
+              не пройдёт.
             '';
           };
         };

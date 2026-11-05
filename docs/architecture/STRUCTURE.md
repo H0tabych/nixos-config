@@ -577,7 +577,7 @@ nixos-config/
 ├── assets/                   README.md  sddm/  vpn-client/
 ├── templates/                python/  rust/  cpp/  sql/  ml-cuda/
 ├── tests/                    killswitch-fail-fast.nix  agent-sandbox.nix  tunnel-config.nix
-│                            tunnel-m2.nix  tunnel-route-runtime.nix  fixtures/
+│                            tunnel-m2.nix  tunnel-route-runtime.nix  inference-models-dir.nix  fixtures/
 ├── scripts/                  check-structure.sh  check-lock.sh  check-doc-ids.sh
 │                            check-secrets.sh  dotfiles-clone.sh  hibernate-offset.sh  new-feature.sh
 └── docs/
@@ -650,6 +650,7 @@ dotfiles/                     (отдельный репозиторий)
 | DEV-3 | `templates/`, `core/templates.nix` |
 | STO-5 | `just hibernate-offset`, `scripts/hibernate-offset.sh` |
 | AI-A7, AI-A8 | `tests/agent-sandbox.nix` |
+| AI-INF-8 | `tests/inference-models-dir.nix` |
 | AI-CTX-3 | `dotfiles/ai/` |
 | VPN-OPS-1, VPN-A14 | `tests/tunnel-config.nix`, `tests/fixtures/` |
 | VPN-A5…A8, M2-1…M2-3, M2-5, M2-6, M2-8 | `tests/tunnel-m2.nix`, `tests/fixtures/` |

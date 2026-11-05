@@ -97,7 +97,7 @@
 | `my.host.gpu.computeCapability` | nixos (`host-facts`) | Версия вычислительных возможностей GPU (для NVIDIA — `7.5`): целевые архитектуры сборки вычислительных пакетов и проверка ML-1; факт железа |
 | `my.ai.inference.{host,port}` | nixos | Loopback-адрес инференса (читают шлюз, машинный слой) |
 | `my.ai.inference.keepAlive` | nixos | Время жизни загруженной модели в простое (AI-RES-2) |
-| `my.ai.inference.modelsDir` | nixos | Каталог моделей; читает `backup` для исключения (STO-8) |
+| `my.ai.inference.modelsDir` | nixos | Каталог моделей на томе данных вне снимков; `backup` читает опцию для проверки (STO-8, AI-INF-8) |
 | `my.ai.local.<роль>` | nixos | **Вычисляемо**: роль → локальная модель. Заполняет фича инференса, читает шлюз (не вводится вручную) |
 | `my.ai.gateway.portBase` | nixos | Базовый порт пользовательских шлюзов; порт шлюза пользователя = `portBase` + (uid − 1000) (AI-GW-1) |
 
@@ -152,7 +152,7 @@
 |---|---|---|
 | `hardware/gpu-*`, `power` | Дискретная GPU засыпает в простое и после выгрузки модели (A5, DESK-5); работает после resume (A13) | Критерии AI-A3, AI-A5; настройки питания — у владельца железа |
 | `gaming/game-optimizer-<р>` | SHOULD вызывать `inference-release` при старте игры, если команда есть в PATH | Предложение владельцу слота; единственный владелец хука игры — оптимизатор (FEAT-6) |
-| `storage/backup` | MUST исключать `my.ai.inference.modelsDir` (STO-8, ML-3) | Чтение опции; без дублирования пути |
+| `storage/backup` | MUST не допускать `my.ai.inference.modelsDir` на подтоме из снимков (STO-8, ML-3) | Чтение опции в assertion; без дублирования пути. Том данных не входит в снимки составом |
 | `storage/layout` | Том для данных сервисов вне снимков (Архитектура STO-1, v2.1): под `my.ai.inference.modelsDir` | AI-INF-8 |
 | `storage/ephemeral-root` | Если включён (STO-7): каталог моделей и состояние сервиса — в едином persist-списке | Условно |
 | `dev/*`, `shell/env-manager` | Агенты и MCP-серверы запускаются в проектном окружении (ARCH-9, DEV-4) | AI-SBX-4 |
