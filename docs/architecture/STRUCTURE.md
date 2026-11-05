@@ -547,7 +547,7 @@ nixos-config/
 │   ├── network/              network-manager  dns-resolver  vpn-client
 │   │                         tunnel-facts  tunnel-xray  [tunnel-server-xray]  killswitch
 │   │                         route-switch  _tunnel-xray-policy.nix  _killswitch-rules.nft
-│   ├── desktop/              session-hyprland  display-manager-sddm  bar-waybar
+│   ├── desktop/              session-hyprland  display-manager-sddm  bar-eww
 │   │                         notifier-mako  launcher-rofi  lockscreen-hyprlock
 │   │                         idle-hypridle  wallpaper-hyprpaper  screenshot-grim
 │   │                         clipboard-cliphist  polkit-agent-hyprpolkitagent
@@ -589,7 +589,7 @@ nixos-config/
 dotfiles/                     (отдельный репозиторий)
 ├── README.md  REGISTRY.md  install.sh  machine.d.example/
 ├── theme/{palette.toml,gen/}
-├── nvim/  zsh/  foot/  hypr/  waybar/  rofi/  mako/  yazi/  mpv/  git/  mangohud/
+├── nvim/  zsh/  foot/  hypr/  eww/  net/  rofi/  mako/  yazi/  mpv/  git/  mangohud/
 ├── claude-code/  opencode/  aider/         # по каталогу на агентный CLI
 ├── ai/{mcp/,doctor}                        # общий список MCP-серверов + генератор
 ├── net/                                    # диагностика туннеля
@@ -605,7 +605,7 @@ dotfiles/                     (отдельный репозиторий)
 | `base` | класс хоста | nix-settings, locale-keyboard, users, hm, fonts, host-facts, sops, ssh, firewall, hardening, network-manager, shell-zsh, env-manager-direnv, vcs-tools, prompt-starship, dotfiles-link | — |
 | `laptop` | класс хоста | power, sleep, layout, swap, maintenance, firmware, audio, bluetooth, automount | — |
 | `user-base` | базис пользователя (ADR-32) | — | dotfiles-link, user-dirs, prompt-starship |
-| `desktop` | capability | session-hyprland, display-manager-sddm, bar-waybar, lockscreen-hyprlock, idle-hypridle, polkit-agent-hyprpolkitagent, osd-swayosd, bluetooth-manager-blueman, theme | notifier-mako, launcher-rofi, wallpaper-hyprpaper, screenshot-grim, clipboard-cliphist, polkit-agent-hyprpolkitagent, osd-swayosd, automount-agent-udiskie, bluetooth-manager-blueman, terminal-foot, file-manager-yazi, effects-profile, theme |
+| `desktop` | capability | session-hyprland, display-manager-sddm, lockscreen-hyprlock, idle-hypridle, polkit-agent-hyprpolkitagent, osd-swayosd, bluetooth-manager-blueman, theme | bar-eww, notifier-mako, launcher-rofi, wallpaper-hyprpaper, screenshot-grim, clipboard-cliphist, polkit-agent-hyprpolkitagent, osd-swayosd, automount-agent-udiskie, bluetooth-manager-blueman, terminal-foot, file-manager-yazi, effects-profile, theme |
 | `development` | capability | editor-neovim | lsp-global, databases, [api-tools] |
 | `containers` | capability | containers-docker | containers-docker |
 | `office` | capability | — | office-suite-libreoffice, mail-calendar-thunderbird, documents-zathura, communication-telegram |
@@ -617,9 +617,10 @@ dotfiles/                     (отдельный репозиторий)
 Класс слота рабочего стола выбирается так: если NixOS-модуль даёт только
 `enable`/`package` (и, при необходимости, PAM или user-юнит-шаблон), а HM-модуль
 того же приложения генерирует конфиг, берётся **N** — иначе нарушается DOT-3 для
-приложения реестра. Так получились `bar-waybar`, `lockscreen-hyprlock`,
+приложения реестра. Так получились `lockscreen-hyprlock`,
 `idle-hypridle` (N), `osd-swayosd` и `polkit-agent-hyprpolkitagent` (N+H:
-системная часть и пользовательский демон). Причина записана в самом файле фичи.
+системная часть и пользовательский демон). `bar-eww` — H: у eww нет
+NixOS-модуля, только пакет и пользовательские юниты (ADR-42). Причина записана в самом файле фичи.
 
 Фичи `gpu-integrated`, `gpu-discrete`, `gpu-hybrid` подключаются из хоста (аппаратный состав, HOST-3). Зависимость `container-gpu-nvidia` от `containers-docker` выражена `assertions` в файле фичи, а не импортом: хост обязан включать пресеты `ml` и `containers` одновременно.
 
