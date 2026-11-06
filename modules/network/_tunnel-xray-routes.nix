@@ -15,13 +15,19 @@
 #   - unreachable в таблице туннеля: пока устройства нет, приложения получают
 #     отказ сразу, и до физического интерфейса пакеты не доходят (VPN-KS-3, VPN-A8).
 #
+#   - обход (VPN-INT-3, ADR-43): `uidrange <uid> lookup main` раньше обоих — маршрут
+#     и **адрес источника** выбираются при connect(), когда пакет ещё не помечен;
+#     иначе сокет получил бы адрес туннеля, и потом пакет с чужим адресом ушёл бы
+#     на физический интерфейс. Метка (mkMarksTable) нужна ниже для пропуска kill switch
+#     и обратного пути ответов, а не для выбора маршрута.
+#
 # Правила и unreachable ставит юнит до подъёма сети: они не зависят от клиента.
 # Адрес и маршрут через устройство ставит ExecStartPost клиента, а исчезают они
 # вместе с устройством. Настройка из самого Xray (gateway, autoSystemRoutingTable)
 # не используется: маршрут там ставится в main, и его нельзя совместить со строгим
 # rpfilter, а конфиг перестал бы быть независимым от версии ядра туннеля.
 # Зависимости: —
-{ pkgs }:
+{ pkgs, lib }:
 let
   # Номер таблицы маршрутизации — константа контракта (как порт 443): роль
   # «таблица туннеля», а не параметр хоста. 7777 вне системных таблиц
@@ -31,6 +37,8 @@ let
   # Оба правила перед `lookup main` (32766).
   priMain = toString 32000;
   priTunnel = toString 32001;
+  # Обход (ADR-43): правило по uid раньше обоих.
+  priBypass = toString 31999;
 
   ip = "${pkgs.iproute2}/bin/ip -4";
 
@@ -40,11 +48,16 @@ in
   # interface и mark приходят от владельца (my.tunnel.interface и
   # my.tunnel.killswitch.mark) — здесь не дублируются.
   mkRoutesService =
-    { interface, mark }:
+    {
+      interface,
+      mark,
+      bypassUids ? [ ],
+    }:
     let
       # Снятие вынесено отдельно и вызывается ещё и перед поднятием:
       # `ip rule add` не идемпотентен — повторный запуск накапливал бы дубли.
       teardown = ''
+        while ${ip} rule del priority ${priBypass} 2>/dev/null; do :; done
         ${ip} rule del priority ${priTunnel} 2>/dev/null || true
         ${ip} rule del priority ${priMain} 2>/dev/null || true
         ${ip} route flush table ${table} 2>/dev/null || true
@@ -78,7 +91,10 @@ in
         ${routeViaLink interface.name} 2>/dev/null || true
         ${ip} rule add lookup main suppress_prefixlength 0 priority ${priMain}
         ${ip} rule add not fwmark ${toString mark} lookup ${table} priority ${priTunnel}
-      '';
+      ''
+      + lib.concatMapStrings (uid: ''
+        ${ip} rule add uidrange ${toString uid}-${toString uid} lookup main priority ${priBypass}
+      '') bypassUids;
 
       preStop = teardown;
     };
@@ -107,8 +123,21 @@ in
   # устройство туннеля, а не через интерфейс прихода. Метка сохраняется в conntrack
   # и восстанавливается на входе раньше rpfilter (его приоритет — mangle + 10),
   # поэтому строгую проверку ослаблять не нужно.
+  #
+  # Обход (VPN-INT-3, ADR-43). Трафик пользователей из my.net.bypass.users получает
+  # ту же метку, что и сокеты клиента: роль метки — «прямой путь» (пропуск kill switch,
+  # VPN-KS-2, и возврат ответов через conntrack), а не «клиент». Маршрут им выбирает
+  # правило по uid (mkRoutesService): выбор по метке в цепочке output поздно — адрес
+  # источника уже взят у туннеля при connect(). Признак здесь тоже числовой uid: он не
+  # зависит от жизни юнита и грузится в любой момент (cgroup — нет, причина в шапке
+  # net-facts). Приоритет mangle раньше kill switch (filter): к его правилам метка уже
+  # стоит. DNS и DoT (порты 53, 853) не помечаются: иначе обходной пользователь слал бы
+  # их провайдеру, а KS-5 обязан резать их ДО общих разрешений (получит отказ).
   mkMarksTable =
-    { mark }:
+    {
+      mark,
+      bypassUids ? [ ],
+    }:
     {
       family = "inet";
       content = ''
@@ -120,6 +149,16 @@ in
         chain restore {
           type filter hook prerouting priority mangle;
           ct mark ${toString mark} meta mark set ct mark
+        }
+      ''
+      + lib.optionalString (bypassUids != [ ]) ''
+
+        chain bypass {
+          type filter hook output priority mangle;
+          meta skuid { ${
+            lib.concatMapStringsSep ", " toString bypassUids
+          } } meta l4proto { tcp, udp } th dport { 53, 853 } return
+          meta skuid { ${lib.concatMapStringsSep ", " toString bypassUids} } meta mark set ${toString mark}
         }
       '';
     };

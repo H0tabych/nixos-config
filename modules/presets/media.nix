@@ -9,7 +9,10 @@ let
 in
 {
   flake.modules.nixos.media = {
-    imports = [ n.browser-firefox ];
+    imports = [
+      n.browser-firefox
+      n.torrent-transmission
+    ];
   };
 
   flake.modules.homeManager.media = {

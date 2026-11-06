@@ -1,6 +1,7 @@
 # Фича: tunnel-xray · Слот: tunnel · Домен: network · Классы: N · Для: хоста с пресетом tunnel
 # Контракт: VPN-CLI-1..9, VPN-CLI-11, VPN-MOD-2/3/4/12, NET-1..4, NET-7, NET-9, SEC-4,
-# VPN-RTE-1..9, VPN-DNS-1, VPN-DNS-3..5, VPN-DNS-8, VPN-MOD-8..11, NET-13, ADR-40/41.
+# VPN-RTE-1..9, VPN-DNS-1, VPN-DNS-3..5, VPN-DNS-8, VPN-MOD-8..11, NET-13, VPN-INT-3,
+# ADR-40/41/43.
 # Единственный владелец юнита tunnel-xray и его конфигов (VPN-CLI-1). Конфиг
 # маршрута tunnel рендерится sops-nix из шаблона при активации — в /nix/store попадают
 # только плейсхолдеры (VPN-CLI-2). Конфиг маршрута direct без секретов лежит в
@@ -49,7 +50,12 @@ in
       inherit (cfg.killswitch) mark;
       pkg = pkgs.unstable.xray;
       ph = name: config.sops.placeholder.${name};
-      routes = import ./_tunnel-xray-routes.nix { inherit pkgs; };
+      routes = import ./_tunnel-xray-routes.nix { inherit pkgs lib; };
+
+      # Обход (ADR-43): числовые uid, имена nftables при загрузке не разрешает. Отсутствие
+      # пользователя или uid — ниже assertion; `or null` не даёт оценке упасть раньше неё.
+      bypassUsers = config.my.net.bypass.users or [ ];
+      bypassUids = map (u: config.users.users.${u}.uid or null) bypassUsers;
       nixProxy = import ./_tunnel-xray-nix-proxy.nix { inherit lib; };
       policy =
         (import ./_tunnel-xray-policy.nix { inherit lib; })
@@ -92,6 +98,10 @@ in
           assertion = !m2 || config.networking.nftables.enable;
           message = "tunnel-xray в режиме m2 требует nftables (фича firewall): на них работает таблица метки клиента";
         }
+        {
+          assertion = lib.all (uid: uid != null) bypassUids;
+          message = "my.net.bypass.users: у каждого пользователя должен быть явный uid (users.users.<имя>.uid), иначе правило обхода не на чем строить (ADR-43)";
+        }
       ];
 
       # ADR-39: исключение из NET-10/VPN-MOD-4, см. комментарий в шапке файла.
@@ -126,10 +136,12 @@ in
       systemd.services.tunnel-routes = lib.mkIf m2 (
         routes.mkRoutesService {
           inherit (cfg) interface;
-          inherit mark;
+          inherit mark bypassUids;
         }
       );
-      networking.nftables.tables.tunnel-marks = lib.mkIf m2 (routes.mkMarksTable { inherit mark; });
+      networking.nftables.tables.tunnel-marks = lib.mkIf m2 (
+        routes.mkMarksTable { inherit mark bypassUids; }
+      );
       boot.kernel.sysctl = lib.mkIf m2 { "net.ipv4.conf.all.src_valid_mark" = 1; };
 
       # Конфиг direct публичен (секретов нет): тест tunnel-config проверяет его ядром.
