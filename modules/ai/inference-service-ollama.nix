@@ -49,6 +49,13 @@
           ${pkgs.curl}/bin/curl -sf "$url/api/generate" \
             -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null || true
         done
+        # Запрос с keep_alive=0 возвращается сразу, а память освобождается позже. Вызывающему
+        # (сон, игра) нужна уже свободная VRAM, поэтому ждём пустой /api/ps с ограничением.
+        for _ in $(${pkgs.coreutils}/bin/seq 1 100); do
+          [ -z "$(${pkgs.curl}/bin/curl -sf "$url/api/ps" | ${pkgs.jq}/bin/jq -r '.models[]?.name')" ] && exit 0
+          ${pkgs.coreutils}/bin/sleep 0.1
+        done
+        echo "inference-release: модели не выгрузились за 10 с" >&2
       '';
 
       # Ollama определяет GPU один раз, при старте. На загрузке он стартует раньше, чем udev
@@ -124,7 +131,15 @@
       # AI-INF-6: выгрузка до сна, перезапуск после — известный отказ Ollama
       # (после resume вычислительная библиотека теряет устройство GPU).
       systemd.services.inference-pre-sleep = {
-        before = [ "sleep.target" ];
+        # Раньше драйверных юнитов: nvidia-*.service при включённом PreserveVideoMemoryAllocations
+        # сбрасывают занятую VRAM в файл (в журнале 2026-11-06: 1,5 ГБ и +31 с на цикл, когда
+        # модель ещё не выгрузилась). Между «до сна» и «до драйвера» порядка не было — гонка.
+        before = [
+          "sleep.target"
+          "nvidia-suspend.service"
+          "nvidia-hibernate.service"
+          "nvidia-suspend-then-hibernate.service"
+        ];
         wantedBy = [ "sleep.target" ];
         serviceConfig = {
           Type = "oneshot";
