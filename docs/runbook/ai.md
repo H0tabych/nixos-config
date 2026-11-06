@@ -177,19 +177,19 @@ done | sort -n
 
 ## 6. Журнал приёмки AI-A1…A14
 
-Сводка на 2026-11-05. Итоговую приёмку выполняет Gate G8. «Отметка» значит, что шаг
+Сводка на 2026-11-06. Итоговую приёмку выполняет Gate G8. «Отметка» значит, что шаг
 закрыт владельцем в ROADMAP, а заново здесь критерий не проверялся.
 
 | № | Состояние | Основание |
 |---|---|---|
-| AI-A1 | Да | R8.8, раздел 7 |
+| AI-A1 | Да (2026-11-06) | `just check` на HEAD после R5.4 (включая ВМ-тесты); `ci-vm` без `ml`: `services.ollama.enable = false`, `my` содержит только `host` и `net` (раздел 7) |
 | AI-A2 | Да, кроме `local-chat` | Раздел 5; роль на этом классе не объявлена |
 | AI-A3 | Да (2026-11-05) | После `inference-release` `runtime_status = suspended`, `Runtime D3 status: Enabled (fine-grained)`; нужны проприетарные модули и `NVreg_EnableGpuFirmware=0`, раздел 8 |
 | AI-A4 | Да (2026-11-05) | Bannerlord через Steam: `nvidia-offload gamemoderun mangohud %command%`; во время игры `/api/ps` пуст, после игры GPU `suspended`, FIM загрузилась по требованию |
-| AI-A5 | **Открыт частично** | Три цикла hibernate подряд с моделью в VRAM пройдены 2026-11-05 (без GSP): `size` равен `size_vram`, без ручных действий. Пункт про kill switch требует M2 |
+| AI-A5 | Да (2026-11-06) | В M2: 5 циклов hibernate (3 до и 2 после исправления порядка юнитов), после каждого: правила `31999/32000/32001` и таблица `killswitch` на месте, адрес выхода сразу, `ollama` определил `library=CUDA`, модель по запросу — `size == size_vram`; ручных действий нет. Попутно найдены и исправлены две гонки (раздел 8): GPU на загрузке и VRAM в файл перед сном. 2026-11-05 — три цикла в M1 |
 | AI-A6 | Отметка R8.5 | |
 | AI-A7, AI-A8 | Отметка R8.6 | `tests/agent-sandbox.nix`; для роли AI-SBX-12 набор урезан решением владельца |
-| AI-A9 | **Открыт частично** | Облачная роль проверена в M1; проверка в M2 ждёт гейт 7.3 (ADR-35) |
+| AI-A9 | Да (2026-11-06) | В M2 без прокси-переменных: `cost-autonomous` — `HTTP 200`, 2,6 с. С остановленным `tunnel-xray` — `HTTP 502 provider_connection_failed (no route to host)` за 1 мс, шлюз `active` |
 | AI-A10 | Отметка R8.6 | |
 | AI-A11 | Отметка R8.7 | Headless-прогон на Python, C/C++, Rust (`ai/code-context`) |
 | AI-A12 | Отметка R8.6 | |
@@ -209,7 +209,7 @@ S8 (R8.9): гейт на собственный индекс не пройден
 nix eval --raw .#nixosConfigurations.sgms-laptop.config.system.build.toplevel.drvPath
 nix eval --raw .#nixosConfigurations.ci-vm.config.system.build.toplevel.drvPath
 nix eval .#nixosConfigurations.ci-vm.config.services.ollama.enable     # false
-nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrNames   # ["host"]: my.ai нет
+nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrNames   # ["host","net"]: my.ai нет
 ```
 
 **AI-A13.** Слот подсистемы один — `inference-service`. Проба на копии дерева вне
@@ -234,7 +234,7 @@ nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrName
 | Правило | Что не выполняется | Что сделать |
 |---|---|---|
 | ~~AI-A3, AI-RES-3~~ | Закрыто 2026-11-05. Раньше dGPU не уходил в suspended: при `finegrained = false` `power/control = on`, `Runtime D3 status: Disabled by default` | Решение — тест ниже, этап Б2 |
-| AI-A5, AI-A9 | Части, зависящие от M2 | Гейт 7.3 на машине (ADR-41) |
+| ~~AI-A5, AI-A9~~ | Закрыто 2026-11-06: части про M2 проверены на машине (раздел 6) | — |
 | ~~AI-INF-6, AI-A5~~ | Исправлено 2026-11-06, проверка — после перезагрузки на машине. После загрузки `ollama` определял GPU раньше, чем поднялся драйвер (в журнале `inference compute id=cpu`, `size_vram 0`) и работал на CPU | `ExecStartPre` у `ollama.service` (`inference-gpu-ready`): ждёт `/sys/module/nvidia/initstate = live` до 30 с, подгружает `nvidia_uvm`. Проверка: после перезагрузки `journalctl -u ollama -b \| grep 'inference compute'` — `library=CUDA`, а `/api/ps` — `size == size_vram` |
 | ~~AI-INF-6~~ | Исправлено 2026-11-06, проверка — на следующих циклах гибернации. `inference-pre-sleep` и `nvidia-hibernate.service` стартовали одновременно: если модель ещё не выгрузилась, драйвер сбрасывал VRAM в файл (в журнале 1,5 ГБ и +31 с на цикл; в цикле без гонки — 1,2 с, 32 КБ) | `inference-pre-sleep` идёт раньше `nvidia-{suspend,hibernate,suspend-then-hibernate}.service`, а `inference-release` ждёт пустой `/api/ps` до 10 с. Проверка: `journalctl -b -u nvidia-hibernate \| grep Consumed` — около секунды, без «written» |
 | ~~AI-INF-8, STO-1, STO-8~~ | Закрыто 2026-11-05. Раньше модели лежали в `/var/lib/ollama/models` на `@rootfs` и попадали в снимки корня | Исправление ниже |

@@ -427,14 +427,14 @@
 
 | Этап | Содержание | Критерий | Статус |
 |---|---|---|---|
-| S1 | `compute-cache` отдельным шагом; `--dry-run`; шаблон `ml-cuda`: GPU видна проектному окружению | AI-CC-2, A7 | [ ] |
-| S2 | `ai-facts`, `inference-service`; политика VRAM; `inference-release`; замеры | AI-A2…A5 | [ ] |
-| S3 | Клиенты автодополнения в dotfiles редактора; необязательные редакторы | AI-A2 (задержка) | [ ] |
+| S1 | `compute-cache` отдельным шагом; `--dry-run`; шаблон `ml-cuda`: GPU видна проектному окружению | AI-CC-2, A7 | [x] |
+| S2 | `ai-facts`, `inference-service`; политика VRAM; `inference-release`; замеры | AI-A2…A5 | [x] |
+| S3 | Клиенты автодополнения в dotfiles редактора; необязательные редакторы | AI-A2 (задержка) | [x] |
 | S4 | `llm-gateway` + секреты пользователя | AI-A6, AI-A9, AI-A14 | [x] |
 | S5 | `agents-tools` с лаунчером; записи реестра dotfiles + ADR-lite | AI-A7, AI-A8, AI-A10, AI-A12 | [x] |
-| S6 | `code-context` + `dotfiles/ai/` (MCP, генератор) | AI-A11 | [ ] |
-| S7 | Runbook, ADR-20…24, финальная приёмка | AI-A1, AI-A13 | [ ] |
-| S8 | *Условно:* гейт 8.3 → L5; экспериментальные агенты | — | [ ] |
+| S6 | `code-context` + `dotfiles/ai/` (MCP, генератор) | AI-A11 | [x] |
+| S7 | Runbook, ADR-20…24, финальная приёмка | AI-A1, AI-A13 | [x] |
+| S8 | *Условно:* гейт 8.3 → L5; экспериментальные агенты | — | [x] |
 
 ---
 
