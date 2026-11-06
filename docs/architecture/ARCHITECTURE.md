@@ -180,6 +180,7 @@ dotfiles/
 | `my.host.gpu.{integratedBusId,discreteBusId,vramGiB}` | nixos | шины и объём памяти GPU (если есть) |
 | `my.host.battery`, `my.host.inputDevices`, `my.host.outputs` | nixos | факты для компонентов рабочего стола |
 | `my.host.disk.device`, `my.host.resume.offset` | nixos | диск для разметки; смещение swap-файла для гибернации |
+| `my.net.bypass.users` | nixos | системные пользователи, чей трафик идёт мимо туннеля (VPN-INT-3); объявляет фича `net-facts`, заполняют фичи-владельцы служб (торрент-демон), читает реализация слота `tunnel` (ADR-43) |
 | `my.tunnel.local.{http,socks}` | nixos | loopback-адреса локального режима туннеля (не секрет); объявляет фича `tunnel-facts` (как и остальные `my.tunnel.*`, VPN_SUBSYSTEM 2.3) |
 
 Секретные и приватные значения в `my.*` **не** хранятся (раздел 9).
@@ -312,7 +313,7 @@ let n = config.flake.modules.nixos; in {
 
 **security:** `sops`, `ssh`, `hardening`, `firewall` (все N).
 
-**network:** `network-manager`, `dns-resolver`, `vpn-client` (корпоративные/штатные VPN), `tunnel-<реализация>` (слот), `tunnel-facts` (N: объявление `my.tunnel.*`), `tunnel-server-<реализация>` (N, опц. — декларативный выход, VPN_SUBSYSTEM 4.6), `route-switch` (N: маршрут туннеля во время работы — состояние, переключатель, авторизация; NET-13, ADR-40), `killswitch` (все N).
+**network:** `net-facts` (N: объявление `my.net.*` — факты о сетевой политике, которые заполняют службы, ADR-43), `network-manager`, `dns-resolver`, `vpn-client` (корпоративные/штатные VPN), `tunnel-<реализация>` (слот), `tunnel-facts` (N: объявление `my.tunnel.*`), `tunnel-server-<реализация>` (N, опц. — декларативный выход, VPN_SUBSYSTEM 4.6), `route-switch` (N: маршрут туннеля во время работы — состояние, переключатель, авторизация; NET-13, ADR-40), `killswitch` (все N).
 
 **desktop (слоты):** `session-<р>`, `display-manager-<р>`, `bar-<р>`, `notifier-<р>`, `launcher-<р>`, `lockscreen-<р>`, `idle-<р>`, `wallpaper-<р>`, `screenshot-<р>`, `clipboard-<р>`, `polkit-agent-<р>`, `osd-<р>`, `automount-agent-<р>`, `bluetooth-manager-<р>`, `theme` (N+H: GTK/Qt/курсор/иконки, палитра для Nix-владеемых потребителей).
 
@@ -715,6 +716,7 @@ let n = config.flake.modules.nixos; in {
 | ADR-40 | **Маршрут туннеля — состояние времени выполнения** (`tunnel`/`direct`, NET-13), независимое от режима. Переключается без пересборки, только администратором; после перезагрузки — `tunnel`. Клиент работает при обоих маршрутах, kill switch не снимается. Инцидент 2026-11-04: после смены адреса выхода сборка стала невозможна — новый секрет применяется только активацией, а сборке нужна сеть через мёртвый выход | NET-5, NET-6, NET-8, NET-13, VPN-MOD-8…11, VPN-RES-3, VPN-RES-7, VPN-RES-8, docs/adr/ADR-040-tunnel-route-switch.md |
 | ADR-41 | **Режим M2: нативный TUN, адрес и маршруты задаёт ОС, собственный трафик клиента исключён меткой сокета и политикой маршрутизации.** Вердикт гейта 7.3 от 2026-10-14 отозван: сеть терялась из-за дефектов конфигурации, а не из-за версии ядра туннеля. Файрвол на nftables в обоих режимах. R9.6 выполняется до включения M2 | NET-7, NET-8, VPN-MOD-12, VPN-KS-2, VPN-KS-11, VPN-DNS-2, VPN-DNS-9, VPN-CLI-11, docs/adr/ADR-041-tunnel-m2-policy-routing.md |
 | ADR-42 | **Панель — eww вместо waybar** (замена реализации слота `bar`, SLOT-3). Панель, окно сети (маршрут NET-13, Wi-Fi) и календарь — одна конфигурация eww в dotfiles (`eww/`); Bluetooth — модуль панели, значок blueman из трея убран (плагин `StatusIcon` отключён); Nix-часть — фича `bar-eww` (H) вместо `bar-waybar`, без патча под Lua-диспетчер Hyprland. Обработчики eww убиваются через 200 мс — долгие команды запускаются отдельным сеансом | Живая проверка 2026-11-05/06: значок маршрута пропадал в `direct` (пустой текст скрывает модуль waybar), окно с переключателями у значка waybar не умеет; замена затрагивает только фичу, пресет и каталог dotfiles (A18) | SLOT-3, SLOT-4, DOT-3, DESK-9, NET-13, docs/adr/ADR-042-panel-eww.md |
+| ADR-43 | **Обход туннеля по uid службы** (`my.net.bypass.users`, фича `net-facts` в `base`). Правило `ip rule uidrange … lookup main` (маршрут и адрес источника выбираются при `connect()`) + метка клиента для пропуска kill switch и возврата ответов; DNS/DoT обходного пользователя не помечаются (KS-5). Торрент-слот: `torrent-transmission` — N+H, системный демон Transmission (RPC с паролем, каталоги вне снимков) + `transmission-remote-gtk`. Опция `my.tunnel.bypass.units` удалена | Решение владельца 2026-11-05 (торренты напрямую и в M2): cgroup-признак в nftables не работает (путь разрешается при загрузке правил, id меняется при перезапуске юнита), одна метка в `output` слишком поздна (адрес источника уже туннеля) — проверено в ВМ | VPN-INT-3, VPN-KS-2, VPN-KS-5, VPN-KS-9, M2-8, VPN-A6, ARCH-3, ARCH-5, SLOT-3, docs/adr/ADR-043-tunnel-bypass-by-uid.md |
 
 Конкретные программы и версии (реализации слотов) в реестр ADR не входят — они в Приложении A.
 
