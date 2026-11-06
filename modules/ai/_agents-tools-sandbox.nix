@@ -4,18 +4,17 @@
 # (agents-tools.nix), и тестом (tests/agent-sandbox.nix), чтобы проверять
 # ровно тот код, который реально запускается (AI-SBX-11).
 #
-# Сетевые режимы `online`/`offline` (AI-SBX-5) принимаются как аргумент, но
-# самой сетевой изоляции здесь нет — общий netns с хостом; отдельное
-# пространство имён и мосты — R9.17.
+# Режимы `online`/`offline` (AI-SBX-5) принимаются аргументом, но сетевой
+# изоляции здесь нет — общий netns с хостом; пространство имён и мосты — R9.17.
 #
 # AI-SBX-1 (ADR-44, R9.14): корень файловой системы СОБИРАЕТСЯ из
 # разрешённого, а не берётся с хоста с масками (`--ro-bind / /` оставлял
 # видимыми сокеты сессии, системную шину, /run/secrets* и любой новый сокет
 # хоста — D17). Только чтение: хранилище пакетов, сокет демона сборки, /etc,
-# /run/current-system, /bin/sh, /usr/bin/env. Свои: /dev, /proc, /tmp, /run
-# (пустой, внутри только свой XDG_RUNTIME_DIR). Всё, чего нет в перечне,
-# внутри не существует — в том числе /run/docker.sock (AI-SBX-10) и
-# `/run/user/<uid>` хоста.
+# /run/current-system, /bin/sh, /usr/bin/env, stub-resolv.conf (на него ведёт
+# /etc/resolv.conf: без него DNS даёт EAI_AGAIN). Свои: /dev, /proc, /tmp, /run
+# (пустой, внутри только свой XDG_RUNTIME_DIR). Прочего нет внутри — ни
+# /run/docker.sock (AI-SBX-10), ни `/run/user/<uid>` хоста.
 # AI-SBX-2: домашний каталог скрыт `--tmpfs`; из ~/.config возвращаются только
 # каталоги белого списка (машинный слой, ai, git, direnv + каталоги роли из
 # `--config`), каждый отдельным ro-bind (симлинк в dotfiles разрешает ядро).
@@ -190,6 +189,7 @@ pkgs.writeShellApplication {
       # Порядок важен: tmpfs /run затирает всё, что смонтировано в него раньше.
       --tmpfs /run
       --ro-bind-try /run/current-system /run/current-system
+      --ro-bind-try /run/systemd/resolve/stub-resolv.conf /run/systemd/resolve/stub-resolv.conf
       --perms 0700 --dir "/run/user/$uid"
     )
     for f in /bin/sh /usr/bin/env; do

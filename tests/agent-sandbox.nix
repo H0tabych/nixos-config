@@ -43,6 +43,10 @@ pkgs.testers.runNixOSTest {
       group = "agent";
     };
 
+    # Как на машине: /etc/resolv.conf — симлинк в /run/systemd/resolve (R9.15,
+    # EAI_AGAIN внутри песочницы, когда /run — пустой tmpfs).
+    services.resolved.enable = true;
+
     environment.etc."dsh-profile-web.yml".source = dshProfile.web;
     environment.etc."dsh-profile-headless.yml".source = dshProfile.headless;
 
@@ -194,11 +198,15 @@ pkgs.testers.runNixOSTest {
     root = set(sandbox_out("ls /").split())
     assert root <= {"bin", "dev", "etc", "home", "nix", "proc", "run", "tmp", "usr"}, f"AI-SBX-1: лишнее в корне: {root}"
     run = set(sandbox_out("ls /run").split())
-    assert run <= {"current-system", "user"}, f"AI-SBX-1: лишнее в /run: {run}"
+    assert run <= {"current-system", "systemd", "user"}, f"AI-SBX-1: лишнее в /run: {run}"
     assert sandbox_out("ls -A /run/user/2000").strip() == "", "XDG_RUNTIME_DIR роли должен быть пустым"
     assert sandbox_out("ls /run/user").split() == ["2000"], "в /run/user только каталог самой роли"
     # Сокет демона сборки — единственное, что нужно из хоста для nix внутри.
     sandbox_out("test -S /nix/var/nix/daemon-socket/socket")
+
+    # DNS (регрессия R9.14: /run пустой — resolv.conf-симлинк висел в пустоту).
+    assert "nameserver" in machine.succeed(outside("cat /etc/resolv.conf")), "контроль: resolv.conf снаружи"
+    assert "nameserver" in sandbox_out("cat /etc/resolv.conf"), "DNS: /etc/resolv.conf должен читаться внутри"
 
     # Окружение (AI-SBX-3): посторонних секретов нет, свои XDG есть.
     env_out = sandbox_out("printenv", env=DIRTY_ENV)
