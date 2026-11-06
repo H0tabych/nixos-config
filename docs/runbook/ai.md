@@ -71,6 +71,16 @@ curl -s "$AI_GATEWAY_URL/v1/chat/completions" \
 стартует (fail-closed, AI-A7), и обходить это нельзя. Поведение проверяет
 `tests/agent-sandbox.nix` (`nix flake check`).
 
+Корень песочницы собирается из разрешённого (R9.14, ADR-44): хранилище пакетов, `/etc`,
+`/run/current-system`, сокет демона сборки — только чтение; `/dev`, `/proc`, `/tmp`, `/run` —
+свои. Сокетов сессии, системной шины, `/run/secrets*` и `/run/docker.sock` внутри нет. Из
+`~/.config` видны `machine.d`, `ai`, `git`, `direnv` и каталог роли (`--config`), только чтение.
+У роли свои `XDG_CACHE/STATE/DATA_HOME` в `~/.local/state/agents/<роль>/`. Ключ шлюза попадает в
+окружение агента значением. Роль `claude` (`--home-rw`) видит `$HOME`, кроме состояния шлюза
+`~/.local/state/llm-gateway` (маска до R9.16). Встроенный поиск `dsh` выключен в профилях.
+Если в проекте не работает `nix develop`/`direnv` — это пробел списка корня: смотрите, чего не
+хватает внутри (`ls /nix/var/nix`, `ls /etc`), и правьте `_agents-tools-sandbox.nix`.
+
 Работа агента лежит в отдельном клоне на отдельной ветке (AI-SBX-7):
 `~/.local/state/agents/<роль>/`. Push заблокирован, слияние — вручную.
 

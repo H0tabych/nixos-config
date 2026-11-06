@@ -13,7 +13,7 @@
   deepseekHarness,
   aiderChat,
   aiderRole,
-  dshRole,
+  dshProfile,
 }:
 pkgs.writeShellApplication {
   name = "agent-launcher";
@@ -48,20 +48,23 @@ pkgs.writeShellApplication {
       . "$HOME/.config/machine.d/ai-gateway-env"
     fi
 
-    # Ключ доступа к шлюзу — только в переменную окружения процесса
-    # (см. комментарий к фиче выше), никогда в файл/лог.
+    # Ключ доступа к шлюзу (AI-SBX-3): читается здесь, снаружи песочницы, и
+    # уходит ТОЛЬКО значением в окружение процесса агента — через
+    # `--pass-env` (из окружения этого процесса, не из argv), никогда в файл/лог.
+    # Путь к файлу с ключом внутрь не пробрасывается: там его всё равно нет.
     gw_key=""
     if [ -n "''${AI_GATEWAY_ACCESS_KEY_FILE:-}" ] && [ -r "$AI_GATEWAY_ACCESS_KEY_FILE" ]; then
       gw_key=$(cat "$AI_GATEWAY_ACCESS_KEY_FILE")
     fi
+    # Из окружения самого лаунчера путь не нужен дальше — не тащим его в `env`.
+    unset AI_GATEWAY_ACCESS_KEY_FILE
 
-    # extra_env — путь к конфигу роли из dotfiles (AI-AGT-3) и адрес/ключ
-    # шлюза под именами переменных, которые понимает конкретное
-    # приложение; доплата к белому списку agents-sandbox-exec (--env,
-    # AI-SBX-3). extra_bin_args — то же самое, но там, где приложение
-    # берёт значение только аргументом командной строки (aider). $HOME
-    # здесь — настоящий домашний каталог: agent-launcher выполняется до
-    # входа в песочницу.
+    # extra_env — доплата к белому списку agents-sandbox-exec (--env,
+    # AI-SBX-3): пути и адреса под именами, которые понимает приложение.
+    # Ключ шлюза идёт отдельно, через export + `--pass-env` (см. ниже).
+    # extra_bin_args — то же там, где приложение берёт значение только
+    # аргументом командной строки. $HOME здесь — настоящий домашний каталог:
+    # agent-launcher выполняется до входа в песочницу.
     state_dir="$HOME/.local/state/agents/$role"
     # AI-SBX-7: если $PWD внутри git-репозитория, агент получает отдельный
     # клон на отдельной ветке вместо прямого доступа к чекауту пользователя
@@ -73,6 +76,7 @@ pkgs.writeShellApplication {
     extra_env=()
     extra_bin_args=()
     sandbox_opts=()
+    # Каталоги роли в ~/.config (белый список AI-SBX-2, только чтение).
     case "$role" in
       claude)
         bin=${lib.getExe claudeCode}
@@ -146,7 +150,8 @@ pkgs.writeShellApplication {
         # это внутреннее имя маршрута dsh, а не выбор провайдера — реальный
         # провайдер за ролью решает шлюз.
         if [ -n "''${AI_GATEWAY_URL:-}" ] && [ -n "$gw_key" ]; then
-          extra_env+=(--env "DEEPSEEK_API_KEY=$gw_key")
+          export DEEPSEEK_API_KEY="$gw_key"
+          sandbox_opts+=(--pass-env DEEPSEEK_API_KEY)
           # Патч пишется в оба поставляемых профиля, которые использует
           # лаунчер (web — полноценный агент, headless — одноразовая задача):
           # какой из них запустится, зависит от аргументов ниже. Каталог
@@ -156,19 +161,14 @@ pkgs.writeShellApplication {
           for dsh_prof in web headless; do
             dsh_profile="$state_dir/dsh-home/profiles/$dsh_prof"
             mkdir -p "$dsh_profile"
-            # printf, а не heredoc: отступы внутри строки Nix правит
-            # форматировщик, и терминатор heredoc уезжает от начала строки
-            # (ПРОВЕРЕНО: скрипт ломался после nix fmt).
-            {
-              printf '%s\n' "# Сгенерировано agent-launcher (R8.6) — правки будут перезаписаны."
-              printf '%s\n' "- id: llm-deepseek"
-              printf '%s\n' "  config:"
-              printf '%s\n' "    baseURL: $AI_GATEWAY_URL/anthropic"
-              printf '%s\n' "- id: agent-default-model"
-              printf '%s\n' "  config:"
-              printf '%s\n' "    provider: deepseek-official"
-              printf '%s\n' "    model: ${dshRole}"
-            } > "$dsh_profile/cordis.patch.yml"
+            # Содержимое — из хранилища (патчи профилей фичи, там же
+            # почему выключен встроенный поиск); подставляется только адрес.
+            case "$dsh_prof" in
+              web) dsh_src=${dshProfile.web} ;;
+              *) dsh_src=${dshProfile.headless} ;;
+            esac
+            dsh_text=$(<"$dsh_src")
+            printf '%s\n' "''${dsh_text//@GATEWAY_URL@/$AI_GATEWAY_URL}" > "$dsh_profile/cordis.patch.yml"
           done
         fi
         # all_proxy отдаём пустым: dsh не поддерживает SOCKS и предупреждает об
@@ -201,26 +201,22 @@ pkgs.writeShellApplication {
         ;;
       aider)
         bin=${lib.getExe aiderChat}
-        # Конфиг тоже засеивается копией в state_dir, как у claude, и по той
-        # же причине «путь снаружи ≠ путь внутри»: ~/.config/<app> — симлинк
-        # в рабочую копию dotfiles, которая лежит под $HOME, а $HOME внутри
-        # песочницы подменён на tmpfs — цель симлинка недостижима, хотя сам
-        # симлink виден (ПРОВЕРЕНО живьём: "Unable to open config file").
-        # Копия снимает это, не открывая песочнице ещё один путь хоста.
-        aider_conf="$state_dir/aider.conf.yml"
-        mkdir -p "$state_dir"
-        if [ -r "$HOME/.config/aider/aider.conf.yml" ]; then
-          install -m600 "$HOME/.config/aider/aider.conf.yml" "$aider_conf"
-        fi
+        # Конфиг читается из ~/.config/aider напрямую: каталог роли — в белом
+        # списке песочницы (`--config`, только чтение), симлинк в dotfiles
+        # разрешает ядро. Прежняя копия в state_dir была обходом старой схемы.
+        sandbox_opts=(--config aider)
         extra_bin_args=(
-          --config "$aider_conf"
+          --config "$HOME/.config/aider/aider.conf.yml"
           --model "openai/${aiderRole}"
         )
         # Суффикс `/v1`: aider (через litellm) добавляет к базе
         # `/chat/completions`, а OpenAI-совместимый маршрут шлюза — под /v1
         # (ПРОВЕРЕНО живым запросом к /v1/chat/completions).
         [ -n "''${AI_GATEWAY_URL:-}" ] && extra_env+=(--env "OPENAI_API_BASE=$AI_GATEWAY_URL/v1")
-        [ -n "$gw_key" ] && extra_env+=(--env "OPENAI_API_KEY=$gw_key")
+        if [ -n "$gw_key" ]; then
+          export OPENAI_API_KEY="$gw_key"
+          sandbox_opts+=(--pass-env OPENAI_API_KEY)
+        fi
         ;;
       *) usage ;;
     esac
