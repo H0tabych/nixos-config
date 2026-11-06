@@ -55,6 +55,14 @@ in
         };
       };
 
+      # В nixpkgs transmission-setup только «перед» transmission (before, partOf) и никем не
+      # запускается: каталоги загрузок за пределами StateDirectory не создаются, а службе они
+      # нужны ДО старта (BindPaths) — иначе status=226/NAMESPACE. Связываем явно.
+      systemd.services.transmission = {
+        requires = [ "transmission-setup.service" ];
+        after = [ "transmission-setup.service" ];
+      };
+
       # Корень каталога данных — до transmission-setup, который создаёт подкаталоги.
       systemd.tmpfiles.rules = [ "d ${root} 0750 ${cfg.user} ${cfg.group} -" ];
 
