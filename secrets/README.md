@@ -12,20 +12,17 @@
 | `secrets/hosts/sgms-laptop.yaml` | `tunnel.clientId` | `tunnel-xray` |
 | `secrets/hosts/sgms-laptop.yaml` | `tunnel.shortId` | `tunnel-xray` |
 | `secrets/hosts/sgms-laptop.yaml` | `vpnClient.credentials` | `vpn-client` |
-| `secrets/users/sgm.yaml` | `ai.gateway.accessKey` | `llm-gateway` |
-| `secrets/users/sgm.yaml` | `ai.gateway.admin.user` | `llm-gateway` |
-| `secrets/users/sgm.yaml` | `ai.gateway.admin.pass` | `llm-gateway` |
-| `secrets/users/sgm.yaml` | `ai.gateway.providerKey.<роль>` | `llm-gateway` |
+| `secrets/users/sgm.yaml` | `ai.gateway.providerKey.<id>` | `llm-gateway` |
 
-`ai.gateway.providerKey.<роль>` — по одной строке на каждую роль, заданную в
-`my.ai.gateway.cloudRoles` на хосте (`cost-autonomous`/`strong-autonomous`/
-`experimental`, раздел 4 AI_SUBSYSTEM.md); имя роли — не вендор (SEC-3: это
-часть публичного контракта ролей, AI-ROLE-1), даже если несколько ролей
-используют один и тот же вендорский ключ — значение просто повторяется.
-Без хотя бы одной настроенной облачной роли эта строка не появляется: по
-умолчанию `cloudRoles = { }` (R8.5, AI-A14/AI-GW-9 — юнит не падает без
-облачных ключей). `ai.gateway.accessKey`/`admin.*` — обязательны всегда, без
-них юнит `llm-gateway` не поднимается вовсе.
+`ai.gateway.providerKey.<id>` — по одной строке на каждого провайдера из
+`my.ai.gateway.providers` на хосте (ADR-45); `<id>` — нейтральный идентификатор
+(`primary`), не вендор (SEC-3). Секрет читает только root и отдаёт службе шлюза
+через LoadCredential. Ключ должен быть в файле ДО сборки: иначе активация
+sops-nix не пройдёт; пустое значение допустимо — провайдер отключается, юнит
+остаётся `active` (AI-A14/AI-GW-9). Ключи доступа к шлюзу и учётные данные его
+управляющего API (`ai.gateway.accessKey`, `ai.gateway.admin.*`, `ai.gateway.providerKey.<роль>`
+из схемы до R9.16) в sops больше не хранятся: их генерирует служба. Старые строки после
+проверки удалить (`just sops-edit`).
 
 Строки появляются по мере объявления `sops.secrets` в фичах-потребителях
 (SEC-4) — начиная с `tunnel-facts` (R3.2). `vpnClient.credentials` — только

@@ -49,16 +49,19 @@ pkgs.writeShellApplication {
       . "$HOME/.config/machine.d/ai-gateway-env"
     fi
 
-    # Ключ доступа к шлюзу (AI-SBX-3): читается здесь, снаружи песочницы, и
-    # уходит ТОЛЬКО значением в окружение процесса агента — через
-    # `--pass-env` (из окружения этого процесса, не из argv), никогда в файл/лог.
-    # Путь к файлу с ключом внутрь не пробрасывается: там его всё равно нет.
+    # Ключ доступа к шлюзу (AI-SBX-3, ADR-45): свой файл `<агент>-<режим>` в каталоге
+    # ключей службы. Читается здесь, снаружи песочницы, и уходит ТОЛЬКО значением в
+    # окружение агента (`--pass-env`), никогда в файл/лог/argv. Агент без ключа
+    # (claude — по подписке, AI-GW-11) или без шлюза (AI-GW-9) авторизации не получает.
     gw_key=""
-    if [ -n "''${AI_GATEWAY_ACCESS_KEY_FILE:-}" ] && [ -r "$AI_GATEWAY_ACCESS_KEY_FILE" ]; then
-      gw_key=$(cat "$AI_GATEWAY_ACCESS_KEY_FILE")
-    fi
-    # Из окружения самого лаунчера путь не нужен дальше — не тащим его в `env`.
-    unset AI_GATEWAY_ACCESS_KEY_FILE
+    case "$role" in
+      dsh|aider)
+        if [ -n "''${AI_GATEWAY_KEYS_DIR:-}" ] && [ -r "$AI_GATEWAY_KEYS_DIR/$role-$mode" ]; then
+          gw_key=$(cat "$AI_GATEWAY_KEYS_DIR/$role-$mode")
+        fi
+        ;;
+    esac
+    unset AI_GATEWAY_KEYS_DIR
 
     # extra_env — доплата к белому списку agents-sandbox-exec (--env,
     # AI-SBX-3): пути и адреса под именами, которые понимает приложение.

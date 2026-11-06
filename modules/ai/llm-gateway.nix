@@ -1,39 +1,28 @@
-# Фича: llm-gateway · Слот: — · Домен: ai · Классы: N+H · Для: пользователей с capability ml
-# Контракт: AI_SUBSYSTEM.md §3.3 (AI-GW-1…13), раздел 4 (роли), SEC-4/SEC-7.
-# N-класс (этот хост) владеет секретами и рендером config.json для КАЖДОГО
-# пользователя с capability `ml` (пересечение config.my.host.users ∩
-# capabilities, по образцу modules/base/users.nix) — вынесено в
-# _llm-gateway-secrets.nix (STR-6). H-класс (DESK-4, тонкая обёртка) — сам
-# user-юнит: читает путь рендера через `osConfig` (AI_SUBSYSTEM.md §10 п.7),
-# порт — через явный uid пользователя (п.8 того же списка, AI-GW-1).
-# Реализация — Bifrost (_llm-gateway-package.nix, Приложение P.1 AI_SUBSYSTEM.md).
-# Два sops-рендера на пользователя: config.json (для -app-dir юнита, через
-# LoadCredential) и файл с готовым ключом доступа для клиентов. Значения
-# секретов — прямо в config.json (обоснование и обязательный префикс "sk-bf-"
-# — в шапке _llm-gateway-config.nix). AI-CMP-4: machine.d получает только URL и
-# ПУТЬ к ключу доступа (AI_GATEWAY_ACCESS_KEY_FILE) — значения там нет
-# (SEC-4/A3), само значение читает клиент редактора из файла.
-# AI-GW-10 (запуск по требованию) здесь не реализован: не подтверждено, что
-# бинарник Bifrost поддерживает systemd socket-activation (LISTEN_FDS); юнит
-# всегда запущен на graphical-session.target, как swayosd-server
-# (osd-swayosd.nix) — известное отступление, не блокирует AI-A6/9/14.
-# StateDirectory в user-юните — ПРОВЕРИТЬ первым запуском (подтверждено живым
-# запуском 2026-10-29: путь — ~/.local/state/llm-gateway/, работает).
-# Известное ограничение (найдено 2026-10-29): изменение секрета/config.json
-# не перезапускает юнит автоматически — sops.templates.restartUnits перезапускает
-# системные юниты от root, а llm-gateway — user-юнит в сессии пользователя;
-# после правки секретов/cloudRoles нужен ручной `systemctl --user restart
-# llm-gateway`. Автоматизировать (например, через ExecStartPre-проверку
-# контрольной суммы рендера) — не в этом шаге.
-# Зависимости: ai-facts (my.ai.local, my.ai.gateway.*), host-facts (my.host.users),
-# users (my.users.*.capabilities/uid) — только чтение my.*, не импорт (ARCH-3).
+# Фича: llm-gateway · Слот: — · Домен: ai · Классы: N · Для: пользователей с capability ml
+# Контракт: AI_SUBSYSTEM.md §3.3 (AI-GW-1…14), раздел 4 (роли), ADR-45, SEC-4/SEC-7.
+# Системная служба шлюза на КАЖДОГО пользователя с capability `ml` (пересечение
+# config.my.host.users ∩ capabilities, по образцу modules/base/users.nix): секреты
+# провайдеров у root, ключи доступа по паре «агент × режим» генерирует служба,
+# пользователь читает лишь файлы своих ключей (_llm-gateway-service.nix). Порт —
+# portBase + (uid − 1000), uid явный (фича users, AI-GW-1).
+# Реализация — Bifrost (_llm-gateway-package.nix, Приложение P.1 AI_SUBSYSTEM.md);
+# политика хоста → шаблон конфига: _llm-gateway-config.nix.
+# AI-CMP-4: машинный слой пользователя получает только URL и КАТАЛОГ с файлами
+# ключей — значений там нет (SEC-4/A3); файл пишется из этого nixos-модуля через
+# home-manager.users (прецедент — modules/base/users.nix), поэтому HM-части у фичи нет.
+# Секреты в sops пользователя: `ai.gateway.providerKey.<id>` — по нейтральному id
+# провайдера (SEC-3). Ключи доступа и учётные данные management-API в sops не хранятся.
+# AI-GW-10 (запуск по требованию) не реализован — см. _llm-gateway-service.nix.
+# MCP-шлюз (AI-GW-14) — R9.20: до него у всех ключей инструменты запрещены.
+# Зависимости: ai-facts (my.ai.*), host-facts (my.host.users), users
+# (my.users.*.capabilities), tunnel-facts (my.tunnel.*) — только чтение my.*, не импорт (ARCH-3).
 { config, lib, ... }:
 let
   outer = config;
   secretsFile = outer.flake.lib.repo.secrets;
   buildConfig = import ./_llm-gateway-config.nix { inherit lib; };
 
-  knownProviders = [
+  knownTypes = [
     "openai"
     "anthropic"
     "bedrock"
@@ -46,82 +35,122 @@ let
     "deepseek"
     "cerebras"
     "perplexity"
-    "openrouter"
+  ];
+  neutralId = lib.match "[a-z0-9][a-z0-9-]*";
+  modes = [
+    "online"
+    "offline"
   ];
 in
 {
   flake.modules.nixos.llm-gateway =
-    { config, ... }:
+    { config, pkgs, ... }:
     let
       gw = config.my.ai.gateway;
       mlUsers = lib.filter (u: lib.elem "ml" outer.my.users.${u}.capabilities) config.my.host.users;
-      ph = name: config.sops.placeholder.${name};
-
-      rendered = import ./_llm-gateway-secrets.nix {
-        inherit
-          lib
-          secretsFile
-          buildConfig
-          mlUsers
-          gw
+      pkg = pkgs.callPackage ./_llm-gateway-package.nix { };
+      keyIds = lib.concatMap (a: map (m: "${a}-${m}") modes) (lib.attrNames gw.agents);
+      providerIds = lib.attrNames gw.providers;
+      allNative = lib.concatMap (p: p.nativeModels) (lib.attrValues gw.providers);
+      unitOf = user: "llm-gateway-${user}";
+      # NET-10: в M1 системная служба не получает переменных прокси сессии —
+      # адрес берётся из единственного места, my.tunnel.local.http. В M2 трафик
+      # идёт через туннель прозрачно.
+      proxyUrl = lib.optionalString (
+        config.my.tunnel.mode == "m1"
+      ) "http://${config.my.tunnel.local.http.address}:${toString config.my.tunnel.local.http.port}";
+      template = buildConfig {
+        inherit (gw)
+          providers
+          agents
+          budget
+          cloudRoles
           ;
+        inherit (config.my.ai) inference;
         localRoles = config.my.ai.local;
-        inference = config.my.ai.inference;
+        proxyUrl = if proxyUrl == "" then null else proxyUrl;
       };
+      mkService =
+        user:
+        import ./_llm-gateway-service.nix {
+          inherit
+            lib
+            pkgs
+            pkg
+            user
+            template
+            keyIds
+            ;
+          inherit (gw) providers;
+          group = config.users.users.${user}.group;
+          port = gw.portBase + (config.users.users.${user}.uid - 1000);
+          credPath = id: config.sops.secrets."ai.gateway.providerKey.${id}.${user}".path;
+        };
     in
     {
       assertions = [
         {
-          assertion = lib.all (r: lib.elem r.provider knownProviders) (lib.attrValues gw.cloudRoles);
-          message = "my.ai.gateway.cloudRoles.*.provider должен быть известным Bifrost провайдером (transports/config.schema.json, Приложение P.1 AI_SUBSYSTEM.md).";
+          assertion = lib.all (p: lib.elem p.type knownTypes) (lib.attrValues gw.providers);
+          message = "my.ai.gateway.providers.*.type должен быть прямым провайдером из списка Bifrost (агрегаторы отклонены, ADR-45; Приложение P.1 AI_SUBSYSTEM.md).";
+        }
+        {
+          assertion =
+            lib.length (lib.unique (map (p: p.type) (lib.attrValues gw.providers))) == lib.length providerIds;
+          message = "my.ai.gateway.providers: тип провайдера у каждого id уникален — в конфиге шлюза провайдер называется по типу (_llm-gateway-config.nix).";
+        }
+        {
+          assertion = lib.all (id: neutralId id != null) (providerIds ++ keyIds);
+          message = "my.ai.gateway: id провайдеров и агентов — [a-z0-9-], без имён вендоров (SEC-3).";
+        }
+        {
+          assertion = lib.all (r: gw.providers ? ${r.provider}) (lib.attrValues gw.cloudRoles);
+          message = "my.ai.gateway.cloudRoles.*.provider должен быть id из my.ai.gateway.providers.";
+        }
+        {
+          assertion = lib.all (a: a.nativeProvider == null || gw.providers ? ${a.nativeProvider}) (
+            lib.attrValues gw.agents
+          );
+          message = "my.ai.gateway.agents.*.nativeProvider должен быть id из my.ai.gateway.providers.";
+        }
+        {
+          assertion = lib.all (m: !(gw.cloudRoles ? ${m} || config.my.ai.local ? ${m})) allNative;
+          message = "my.ai.gateway.providers.*.nativeModels не должны совпадать с именами ролей (сквозной маршрут и роли различаются по имени модели).";
+        }
+        {
+          assertion = gw.cloudRoles == { } || gw.budget.maxUSD != null;
+          message = "Облачным ролям нужен лимит расходов my.ai.gateway.budget.maxUSD (AI-GW-6).";
         }
       ];
 
-      sops.secrets = rendered.mkSecrets;
-      sops.templates = rendered.mkTemplates ph;
-    };
+      sops.secrets = lib.listToAttrs (
+        lib.concatMap (
+          user:
+          map (
+            id:
+            lib.nameValuePair "ai.gateway.providerKey.${id}.${user}" {
+              key = "ai.gateway.providerKey.${id}";
+              sopsFile = secretsFile "users/${user}.yaml";
+              owner = "root";
+              mode = "0400";
+              restartUnits = [ "${unitOf user}.service" ];
+            }
+          ) providerIds
+        ) mlUsers
+      );
 
-  flake.modules.homeManager.llm-gateway =
-    {
-      config,
-      osConfig,
-      pkgs,
-      ...
-    }:
-    let
-      user = config.home.username;
-      uid = osConfig.users.users.${user}.uid;
-      port = osConfig.my.ai.gateway.portBase + (uid - 1000);
-      pkg = pkgs.callPackage ./_llm-gateway-package.nix { };
-      configPath = osConfig.sops.templates."llm-gw-config-${user}".path;
-      # Не sops.secrets напрямую: клиентам нужен ключ с префиксом sk-bf-, который
-      # добавляет Nix при рендере (_llm-gateway-secrets.nix) — иначе шлюз
-      # подменяет ключ своим и отвечает access_not_found.
-      accessKeyPath = osConfig.sops.templates."llm-gw-access-key-${user}".path;
-    in
-    {
-      systemd.user.services.llm-gateway = {
-        Unit = {
-          Description = "llm-gateway (AI_SUBSYSTEM.md §3.3, Bifrost)";
-          PartOf = [ "graphical-session.target" ];
-          After = [ "graphical-session.target" ];
-        };
-        Service = {
-          LoadCredential = "config.json:${configPath}";
-          StateDirectory = "llm-gateway";
-          ExecStartPre = "${pkgs.coreutils}/bin/install -m 0400 %d/config.json %S/llm-gateway/config.json";
-          ExecStart = "${pkg}/bin/bifrost-http -host 127.0.0.1 -port ${toString port} -app-dir %S/llm-gateway";
-          Restart = "on-failure";
-          RestartSec = 2;
-        };
-        Install.WantedBy = [ "graphical-session.target" ];
-      };
+      systemd.services = lib.listToAttrs (
+        map (user: lib.nameValuePair (unitOf user) (mkService user)) mlUsers
+      );
 
-      # AI-CMP-4: только URL и путь к ключу — значения нет (SEC-4/A3).
-      home.file.".config/machine.d/ai-gateway-env".text = ''
-        # Сгенерировано Nix (llm-gateway, AI-CMP-4) — не редактируйте руками.
-        export AI_GATEWAY_URL="http://127.0.0.1:${toString port}"
-        export AI_GATEWAY_ACCESS_KEY_FILE="${accessKeyPath}"
-      '';
+      # AI-CMP-4: только URL и каталог ключей — значений нет (SEC-4/A3).
+      home-manager.users = lib.genAttrs mlUsers (user: {
+        home.file.".config/machine.d/ai-gateway-env".text = ''
+          # Сгенерировано Nix (llm-gateway, AI-CMP-4) — не редактируйте руками.
+          export AI_GATEWAY_URL="http://127.0.0.1:${
+            toString (gw.portBase + (config.users.users.${user}.uid - 1000))
+          }"
+          export AI_GATEWAY_KEYS_DIR="/run/llm-gateway/${user}"
+        '';
+      });
     };
 }

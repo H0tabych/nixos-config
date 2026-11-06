@@ -34,30 +34,43 @@ sudo systemctl start inference-post-resume.service
 
 ### Шлюз
 
+Шлюз — системная служба на пользователя (ADR-45): `llm-gateway-<имя>` (`DynamicUser`,
+состояние в `/var/lib/private/llm-gateway-<имя>/`, root читает, пользователь нет).
+
 ```sh
-systemctl --user status llm-gateway
-journalctl --user -u llm-gateway -n 50
+systemctl status llm-gateway-$USER
+journalctl -u llm-gateway-$USER -n 50     # журнал системной службы, нужны права на чтение журнала
 ```
 
-Юнит не должен быть `failed` и без облачных ключей (AI-A14). Единственный источник
-настроек — `config.json` от Nix и sops (`source_of_truth`), поэтому `config.db` должна
-собираться заново при старте (ПРОВЕРИТЬ: на живой машине не выполнялось). Если база
-повреждена, отложите её, а не удаляйте:
+Юнит не должен быть `failed` и без облачных ключей (AI-A14): провайдер с пустым секретом
+вычёркивается, его роли отвечают ошибкой. Первый старт на новом состоянии скачивает справочник
+цен с сайта апстрима (бюджеты считаются по нему): без сети (`direct` с kill switch) служба
+повторяет попытки каждые 5 с и поднимется, когда сеть появится; дальше кэш лежит в состоянии.
+Единственный источник настроек — `config.json` (Nix и sops, `source_of_truth`), он
+пересобирается при каждом старте. Если база повреждена, отложите её, а не удаляйте (root):
 
 ```sh
-systemctl --user stop llm-gateway
-mv ~/.local/state/llm-gateway/config.db ~/.local/state/llm-gateway/config.db.bak
-systemctl --user start llm-gateway
+sudo systemctl stop llm-gateway-$USER
+sudo mv /var/lib/private/llm-gateway-$USER/config.db /var/lib/private/llm-gateway-$USER/config.db.bak
+sudo systemctl start llm-gateway-$USER
 ```
 
 Откат: остановить юнит и вернуть файл на место.
+
+**Ключи доступа** — по паре «агент × режим»: файлы `/run/llm-gateway/<имя>/<агент>-<режим>`
+(`dsh-online`, `dsh-offline`, `aider-online`, `aider-offline`), права `root:<группа> 0440`,
+создаются при старте службы, исчезают при остановке. Постоянные: хранятся в состоянии службы и
+не меняются при перезапуске. Ротация одного ключа (root): удалить
+`/var/lib/private/llm-gateway-<имя>/keys/<агент>-<режим>` и перезапустить службу; запущенные
+сессии агента потеряют авторизацию. Вход в управляющий API: учётные данные
+`keys/admin-user` и `keys/admin-pass` в том же каталоге (читает root).
 
 **Проверка живым запросом** (роль через шлюз; ключ не печатается):
 
 ```sh
 . ~/.config/machine.d/ai-gateway-env
 curl -s "$AI_GATEWAY_URL/v1/chat/completions" \
-  -H "Authorization: Bearer $(cat "$AI_GATEWAY_ACCESS_KEY_FILE")" \
+  -H "Authorization: Bearer $(cat "$AI_GATEWAY_KEYS_DIR/aider-offline")" \
   -H 'Content-Type: application/json' \
   -d '{"model":"local-fast","messages":[{"role":"user","content":"Say ok"}],"max_tokens":8}'
 ```
@@ -76,8 +89,7 @@ curl -s "$AI_GATEWAY_URL/v1/chat/completions" \
 свои. Сокетов сессии, системной шины, `/run/secrets*` и `/run/docker.sock` внутри нет. Из
 `~/.config` видны `machine.d`, `ai`, `git`, `direnv` и каталог роли (`--config`), только чтение.
 У роли свои `XDG_CACHE/STATE/DATA_HOME` в `~/.local/state/agents/<роль>/`. Ключ шлюза попадает в
-окружение агента значением. Роль `claude` (`--home-rw`) видит `$HOME`, кроме состояния шлюза
-`~/.local/state/llm-gateway` (маска до R9.16). Встроенный поиск `dsh` выключен в профилях.
+окружение агента значением. Состояния шлюза в `$HOME` больше нет (R9.16). Встроенный поиск `dsh` выключен в профилях.
 Если в проекте не работает `nix develop`/`direnv` — это пробел списка корня: смотрите, чего не
 хватает внутри (`ls /nix/var/nix`, `ls /etc`), и правьте `_agents-tools-sandbox.nix`.
 
@@ -109,15 +121,14 @@ config/hooks/info подмодулей, указатели связанных д
 
 | Ключ | Назначение |
 |---|---|
-| `ai.gateway.accessKey` | Ключ доступа к шлюзу (AI-GW-3/4); префикс шлюза добавляет Nix, в sops он не пишется |
-| `ai.gateway.providerKey.<роль>` | Ключ провайдера для облачной роли |
-| `ai.gateway.admin.user`, `ai.gateway.admin.pass` | Вход в управляющий API шлюза |
+| `ai.gateway.providerKey.<id>` | Ключ провайдера по нейтральному id из `my.ai.gateway.providers` (ADR-45); читает только root |
+
+Ключи доступа и вход в управляющий API шлюза в sops не хранятся: их генерирует служба (раздел 1).
 
 ```sh
 just sops-edit secrets/users/<имя>.yaml
 just build <host> && nvd diff /run/current-system result
-just test <host>
-systemctl --user restart llm-gateway   # сам юнит при смене секрета не перезапускается
+just test <host>    # смена секрета перезапускает llm-gateway-<имя> сама (restartUnits)
 just boot <host>
 ```
 
@@ -132,14 +143,14 @@ just boot <host>
 
 | Что | Где | Перед очисткой |
 |---|---|---|
-| Журнал запросов шлюза | `~/.local/state/llm-gateway/logs.db*` | Остановить юнит; пересоздание базы при старте — ПРОВЕРИТЬ |
-| Журнал юнита | `journalctl --user -u llm-gateway` | Общие лимиты journald |
+| Журнал запросов шлюза | `/var/lib/private/llm-gateway-<имя>/logs.db*` (root) | Остановить юнит; пересоздание базы при старте — ПРОВЕРИТЬ |
+| Журнал юнита | `journalctl -u llm-gateway-<имя>` | Общие лимиты journald |
 | Сессии и кэши агентов | `~/.local/state/agents/<роль>/` | Работа агента — в самих проектах (AI-SBX-7), здесь только состояние |
 
 ```sh
-systemctl --user stop llm-gateway
-rm ~/.local/state/llm-gateway/logs.db*
-systemctl --user start llm-gateway
+sudo systemctl stop llm-gateway-$USER
+sudo rm /var/lib/private/llm-gateway-$USER/logs.db*
+sudo systemctl start llm-gateway-$USER
 ```
 
 Отката у удаления нет. Если журнал ещё может понадобиться, перенесите его, а не удаляйте.
@@ -198,7 +209,7 @@ done | sort -n
 | Модель `local-fast` | 0,92 ГиБ на диске | `@data`, каталог `/var/lib/nosnapshot/models`: вне снимков и бэкапа (AI-INF-8) |
 | Замыкание пакета инференса (CUDA) | 2,1 ГиБ | `@nix` |
 | VRAM во время работы модели | 1,09 из 4 ГиБ | Освобождается `keepAlive` или `inference-release` |
-| RAM демона и шлюза | Не измерено | Снять вручную: `systemctl status ollama.service`, `systemctl --user status llm-gateway` (строка `Memory`) |
+| RAM демона и шлюза | Не измерено | Снять вручную: `systemctl status ollama.service`, `systemctl status llm-gateway-$USER` (строка `Memory`) |
 
 ---
 

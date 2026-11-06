@@ -98,19 +98,49 @@ in
       keepAlive = "5m";
     };
 
+    # Шлюз v2 (ADR-45, R9.16): прямой провайдер с нейтральным id (SEC-3); секрет —
+    # `ai.gateway.providerKey.primary` в secrets/users/<user>.yaml.
+    # Идентификаторы моделей — ПРОВЕРИТЬ по каталогу провайдера (api-docs.deepseek.com)
+    # перед первым запросом; `nativeModels` — явный перечень для сквозного маршрута
+    # (AI-ROLE-5), им пользуется dsh (R9.18).
+    my.ai.gateway.providers.primary = {
+      type = "deepseek";
+      nativeModels = [
+        "deepseek-flash"
+        "deepseek-v4-pro"
+      ];
+    };
+
     my.ai.gateway.cloudRoles = {
-      # Первая облачная роль (R8.5) — для "альтернативного автономного" агента
-      # (AI-AGT-1, §3.4 AI_SUBSYSTEM.md); сам агент — шаг R8.6 (agents-tools),
-      # роль готова заранее.
-      # Модель сверена со списком /api/v1/models OpenRouter 2026-10-29 (не по
-      # обзорам: ранее здесь стоял "qwen/qwen3-coder:free", которого в API нет —
-      # у Qwen3 Coder бесплатного варианта не публикуется). Nemotron 3 Ultra:
-      # 550B всего / 55B активных, контекст 1M, тариф ":free".
-      # Бесплатные варианты у OpenRouter приходят и уходят — при ошибке 404/400
-      # от провайдера сверить ID по https://openrouter.ai/api/v1/models.
       cost-autonomous = {
-        provider = "openrouter";
-        model = "nvidia/nemotron-3-ultra-550b-a55b:free";
+        provider = "primary";
+        model = "deepseek-flash";
+      };
+      strong-autonomous = {
+        provider = "primary";
+        model = "deepseek-v4-pro";
+      };
+    };
+
+    # AI-GW-6: лимит на каждый ключ с облачными правами (решение владельца 2026-11-06).
+    my.ai.gateway.budget = {
+      maxUSD = 10;
+      resetDuration = "1M";
+    };
+
+    # Матрица ключей доступа (AI-GW-4): на агента — ключи `-online` и `-offline`.
+    # claude ходит по подписке мимо шлюза (AI-GW-11) и ключа не имеет.
+    my.ai.gateway.agents = {
+      dsh = {
+        cloudRoles = [
+          "cost-autonomous"
+          "strong-autonomous"
+        ];
+        nativeProvider = "primary";
+      };
+      aider = {
+        cloudRoles = [ "cost-autonomous" ];
+        localRoles = [ "local-chat" ];
       };
     };
 

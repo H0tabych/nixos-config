@@ -232,15 +232,6 @@ pkgs.writeShellApplication {
       bwrap_args+=(--bind-try "$p" "$p")
     done
 
-    # Маска состояния шлюза (D17): в --home-rw $HOME открыт, а там лежит
-    # config.json шлюза с ключами провайдера. Убрать в R9.16 (шлюз станет
-    # системной службой, состояние уйдёт из $HOME). `-d`: bwrap не должен
-    # создавать заглушку в настоящем $HOME.
-    gw_state="''${XDG_STATE_HOME:-$real_home/.local/state}/llm-gateway"
-    if [ "$home_rw" -eq 1 ] && [ -d "$gw_state" ]; then
-      bwrap_args+=(--tmpfs "$gw_state")
-    fi
-
     # AI-SBX-6 (fail-closed): любая ошибка bwrap (в том числе недоступность
     # пользовательских пространств имён, AI-SBX-11) останавливает скрипт
     # (`set -e`) до исполнения целевой команды.

@@ -104,13 +104,14 @@ pkgs.testers.runNixOSTest {
     # Ключ расшифровки секретов хоста и профиль браузера.
     fixture_file("/home/agent/.config/sops/age/keys.txt", "age-key-marker")
     fixture_file("/home/agent/.mozilla/firefox/x.default/logins.json", "browser-marker")
-    # Копия конфига шлюза с ключами провайдера (три копии из D17).
-    fixture_file("/home/agent/.local/state/llm-gateway/config.json", "gw-config-marker")
     # Секреты sops: каталог 0751, файлы пользователя 0400 — как у sops-nix.
     machine.succeed("install -d -m751 /run/secrets && install -d -m751 /run/secrets/rendered")
     fixture_file("/run/secrets/outside-secret", "top-secret")
-    fixture_file("/run/secrets/rendered/llm-gw-access-key-agent", "gw-access-key-marker")
-    fixture_file("/run/secrets/rendered/llm-gw-config-agent.json", "gw-rendered-marker")
+    # Шлюз v2 (ADR-45): ключ доступа — копия для пользователя (root:agent 0440,
+    # читается самим agent, как на машине); конфиг с ключами провайдера — худший случай: в каталоге
+    # службы, читаемый пользователем (0600, не в $HOME).
+    fixture_file("/run/llm-gateway/agent/dsh-online", "gw-access-key-marker", "0440")
+    fixture_file("/var/lib/llm-gateway-agent/config.json", "gw-config-marker", "0600")
     machine.succeed(outside("mkdir -p /home/agent/project /home/agent/state"))
     machine.succeed("echo docker-socket-marker > /run/docker.sock")
 
@@ -175,11 +176,10 @@ pkgs.testers.runNixOSTest {
         ("ssh-ключ", "/home/agent/.ssh/id_ed25519", "fake-ssh-key"),
         ("репозиторий nixos-config", "/home/agent/nixos-config/flake.nix", "repo-marker"),
         ("секрет sops root", "/run/secrets/outside-secret", "top-secret"),
-        ("ключ доступа к шлюзу 0400", "/run/secrets/rendered/llm-gw-access-key-agent", "gw-access-key-marker"),
-        ("отрендеренный конфиг шлюза", "/run/secrets/rendered/llm-gw-config-agent.json", "gw-rendered-marker"),
+        ("ключ доступа к шлюзу 0440", "/run/llm-gateway/agent/dsh-online", "gw-access-key-marker"),
+        ("конфиг шлюза с ключами провайдера", "/var/lib/llm-gateway-agent/config.json", "gw-config-marker"),
         ("ключ расшифровки секретов", "/home/agent/.config/sops/age/keys.txt", "age-key-marker"),
         ("профиль браузера", "/home/agent/.mozilla/firefox/x.default/logins.json", "browser-marker"),
-        ("состояние шлюза", "/home/agent/.local/state/llm-gateway/config.json", "gw-config-marker"),
         ("~/.config вне белого списка", "/home/agent/.config/evil/x", "evil-marker"),
         ("~/.config/claude-code без --config", "/home/agent/.config/claude-code/settings.json", "config-marker"),
         ("соседний каталог ~/.local/share", "/home/agent/.local/share/other/data", "other-marker"),
@@ -274,7 +274,7 @@ pkgs.testers.runNixOSTest {
     # AI-A8: «вредоносный» файл инструкций ничего не достаёт (AI-SBX-9).
     machine.succeed(
         "echo 'cat /home/agent/.ssh/id_ed25519 /home/agent/.config/sops/age/keys.txt "
-        "/run/secrets/rendered/llm-gw-access-key-agent' "
+        "/run/llm-gateway/agent/dsh-online' "
         f"> {PROJECT}/malicious.sh && chown agent:agent {PROJECT}/malicious.sh"
     )
     status, out = machine.execute(sandbox(f"sh {PROJECT}/malicious.sh"))
@@ -321,9 +321,8 @@ pkgs.testers.runNixOSTest {
     machine.succeed("test -e /home/agent/written-outside-project")
     for label, path, marker in [
         ("секрет sops", "/run/secrets/outside-secret", "top-secret"),
-        ("ключ доступа к шлюзу", "/run/secrets/rendered/llm-gw-access-key-agent", "gw-access-key-marker"),
-        ("отрендеренный конфиг шлюза", "/run/secrets/rendered/llm-gw-config-agent.json", "gw-rendered-marker"),
-        ("состояние шлюза (маска до R9.16)", "/home/agent/.local/state/llm-gateway/config.json", "gw-config-marker"),
+        ("ключ доступа к шлюзу", "/run/llm-gateway/agent/dsh-online", "gw-access-key-marker"),
+        ("конфиг шлюза с ключами провайдера", "/var/lib/llm-gateway-agent/config.json", "gw-config-marker"),
     ]:
         assert_hidden(f"{label} (--home-rw)", path, marker, HRW)
     for sock in SOCKETS + ["/run/docker.sock"]:
