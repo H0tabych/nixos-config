@@ -26,8 +26,8 @@
   ...
 }:
 let
-  sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix { };
-  gitIsolate = pkgs.callPackage ../modules/ai/_agents-tools-git-isolate.nix { };
+  gitTool = pkgs.callPackage ../modules/ai/_agents-tools-git.nix { };
+  sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix { inherit gitTool; };
   dshProfile = pkgs.callPackage ../modules/ai/_agents-tools-dsh-profile.nix {
     dshRole = "cost-autonomous";
   };
@@ -49,7 +49,7 @@ pkgs.testers.runNixOSTest {
     environment.systemPackages = [
       sandboxExec
       pkgs.socat
-      gitIsolate
+      gitTool
       pkgs.coreutils
       pkgs.bubblewrap
       pkgs.git
@@ -138,7 +138,7 @@ pkgs.testers.runNixOSTest {
     fixture_file("/home/agent/.dotfiles/ai/generated/claude.mcp.json", "ai-marker", "0644")
     machine.succeed(outside("ln -s /home/agent/.dotfiles/ai /home/agent/.config/ai"))
     fixture_file("/home/agent/.config/machine.d/ai-gateway-env", "machine-marker", "0644")
-    fixture_file("/home/agent/.config/git/config", "git-marker", "0644")
+    fixture_file("/home/agent/.config/git/config", "'[gitmarker]'", "0644")
     fixture_file("/home/agent/.config/direnv/direnvrc", "direnvrc-marker", "0644")
     fixture_file("/home/agent/.config/aider/aider.conf.yml", "aider-marker", "0644")
     fixture_file("/home/agent/.config/claude-code/settings.json", "config-marker", "0644")
@@ -234,7 +234,7 @@ pkgs.testers.runNixOSTest {
     for path, marker in [
         ("/home/agent/.config/machine.d/ai-gateway-env", "machine-marker"),
         ("/home/agent/.config/ai/generated/claude.mcp.json", "ai-marker"),
-        ("/home/agent/.config/git/config", "git-marker"),
+        ("/home/agent/.config/git/config", "gitmarker"),
         ("/home/agent/.config/direnv/direnvrc", "direnvrc-marker"),
     ]:
         assert marker in sandbox_out(f"cat {path}"), f"AI-SBX-2: {path} из белого списка должен читаться"
@@ -335,117 +335,115 @@ pkgs.testers.runNixOSTest {
         assert "baseURL: @GATEWAY_URL@/anthropic" in text and "model: cost-autonomous" in text
     assert "- id: tool-web\n  config:\n    search: false" in machine.succeed("cat /etc/dsh-profile-headless.yml")
 
-    # --- AI-SBX-7: отдельный клон на отдельной ветке вместо прямого доступа
-    # к чекауту пользователя; push по умолчанию запрещён; ветка пользователя
-    # не трогается (AI-A12) --------------------------------------------------
-    machine.succeed(
-        "su - agent -c "
-        "'git config --global user.email t@t && git config --global user.name t'"
-    )
-    machine.succeed(
-        "su - agent -c "
-        "'install -d /home/agent/proj-git "
-        "&& cd /home/agent/proj-git "
-        "&& git init -q "
-        "&& echo hi > README.md && git add . && git commit -qm init'"
-    )
-    user_branch_before = machine.succeed(
-        "su - agent -c 'git -C /home/agent/proj-git branch --show-current'"
-    ).strip()
+    # === AI-SBX-7, AI-A12 (ADR-44, R9.15): работа на месте ====================
+    REPO = f"{AGENT}/proj-git"
 
-    clone_path = machine.succeed(
-        "su - agent -c "
-        "'agents-git-isolate dsh /home/agent/state /home/agent/proj-git'"
-    ).strip()
-    assert clone_path.startswith("/home/agent/state/repos/"), (
-        f"agents-git-isolate должен вернуть путь внутри state-dir, получено: {clone_path!r}"
+
+    def in_repo(cmd):
+        return outside(f"cd {REPO} && {cmd}")
+
+
+    def sandbox_repo(cmd, opts=""):
+        return sandbox(f"sh -c {shlex.quote(cmd)}", opts, project=REPO)
+
+
+    # Фикстура: репозиторий с hooks/, info/, .envrc, core.hooksPath внутри дерева,
+    # подмодулем и игнорируемым файлом. Идентичность — в .git/config репозитория.
+    machine.succeed(outside("git init -q -b main /home/agent/sub-src"))
+    machine.succeed(outside(
+        "cd /home/agent/sub-src && git config user.name t && git config user.email t@t "
+        "&& echo s > s.txt && git add . && git commit -qm sub"
+    ))
+    machine.succeed(outside(f"git init -q -b main {REPO}"))
+    machine.succeed(in_repo(
+        "git config user.name t && git config user.email t@t "
+        "&& git config core.hooksPath scripts/hooks "
+        "&& mkdir -p .git/hooks .git/info scripts/hooks "
+        "&& printf '#!/bin/sh\nexit 0\n' > scripts/hooks/pre-commit && chmod +x scripts/hooks/pre-commit "
+        "&& echo 'use flake' > .envrc && printf 'ignored.log\n.direnv\n' > .gitignore "
+        "&& echo ignored > ignored.log && echo hi > README.md "
+        "&& git -c protocol.file.allow=always submodule add -q /home/agent/sub-src sub "
+        "&& git add -A && git commit -qm init && git branch side"
+    ))
+    machine.succeed(in_repo("test -f sub/.git && test -d .git/modules/sub/hooks"))
+
+    # Правка из песочницы видна снаружи сразу; коммит проходит (объекты, ссылки,
+    # индекс — на запись), ветка остаётся прежней; хук из core.hooksPath работает.
+    machine.succeed(sandbox_repo("echo edit >> README.md"))
+    assert "edit" in machine.succeed(in_repo("cat README.md")), "AI-SBX-7: правка должна быть видна снаружи"
+    machine.succeed(sandbox_repo("git add -A && git commit -qm agent-commit && git branch inner"))
+    assert machine.succeed(in_repo("git log -1 --format=%s")).strip() == "agent-commit", (
+        "AI-SBX-7: коммит агента должен быть виден снаружи"
+    )
+    assert machine.succeed(in_repo("git branch --show-current")).strip() == "main"
+    machine.succeed(in_repo("git rev-parse inner"))
+
+    # Метаданные git — только чтение. Контроль: тот же пользователь снаружи пишет.
+    for label, cmd, control in [
+        ("git config", "git config user.name evil", "test -w .git/config"),
+        ("дописывание в .git/config", "echo x >> .git/config", "test -w .git/config"),
+        ("запись в .git/hooks", "touch .git/hooks/evil", "test -w .git/hooks"),
+        ("запись в .git/info", "touch .git/info/evil", "test -w .git/info"),
+        ("запись в core.hooksPath внутри дерева", "touch scripts/hooks/evil", "test -w scripts/hooks"),
+        ("подмена хука из core.hooksPath", "echo x >> scripts/hooks/pre-commit", "test -w scripts/hooks/pre-commit"),
+        (".envrc", "echo x >> .envrc", "test -w .envrc"),
+        ("указатель подмодуля .git", "echo x >> sub/.git", "test -w sub/.git"),
+        ("hooks подмодуля", "touch .git/modules/sub/hooks/evil", "test -w .git/modules/sub/hooks"),
+        ("config подмодуля", "echo x >> .git/modules/sub/config", "test -w .git/modules/sub/config"),
+        ("rm -rf .git/hooks", "rm -rf .git/hooks", "test -w .git/hooks"),
+        ("mv .git/hooks", "mv .git/hooks .git/hooks.x", "test -w .git/hooks"),
+        ("mv .git (привязан к себе)", "mv .git .git.x", "test -w ."),
+    ]:
+        machine.succeed(in_repo(control))
+        status, _ = machine.execute(sandbox_repo(cmd))
+        assert status != 0, f"AI-SBX-7: {label} должно отказывать изнутри песочницы"
+    # Контроль для mv .git: снаружи то же переименование проходит (и откатывается).
+    machine.succeed(in_repo("mv .git .git.x && mv .git.x .git"))
+    # Ничего не сломалось и не появилось.
+    machine.succeed(in_repo("test -d .git/hooks && test ! -e .git/hooks/evil && test ! -e .git.x && git status --short"))
+    assert "evil" not in machine.succeed(in_repo("git config user.name")), "AI-SBX-7: config не должен измениться"
+
+    # Кэш окружения у роли свой: запись изнутри не попадает в .direnv пользователя.
+    machine.succeed(sandbox_repo("mkdir .direnv/inside-marker"))
+    machine.fail(in_repo("test -e .direnv/inside-marker"))
+    machine.succeed(f"ls {STATE}/direnv/*/inside-marker")
+
+    # Отчёт лаунчера (AI-A12): чистая сессия — «без отклонений»; со сдвигами —
+    # каждое перечислено, штатный коммит в текущую ветку — нет.
+    machine.succeed(outside(f"agents-git snapshot {REPO} /home/agent/snap-clean"))
+    clean = machine.succeed(outside(f"agents-git report {REPO} /home/agent/snap-clean 2>&1"))
+    assert "без отклонений" in clean, f"отчёт чистой сессии: {clean!r}"
+
+    machine.succeed(outside(f"agents-git snapshot {REPO} /home/agent/snap"))
+    machine.succeed(sandbox_repo(
+        "echo a > new.txt && git add new.txt && git commit -qm more "
+        "&& git update-ref refs/heads/side HEAD~1 "
+        "&& git branch fresh "
+        "&& git update-index --skip-worktree README.md "
+        "&& git replace HEAD~1 HEAD "
+        "&& git init -q nested-repo "
+        "&& echo changed > ignored.log "
+        "&& touch .git/config.worktree"
+    ))
+    rep = machine.succeed(outside(f"agents-git report {REPO} /home/agent/snap 2>&1"))
+    for want in [
+        "refs/heads/side",
+        "refs/heads/fresh",
+        "флаг индекса",
+        "README.md",
+        "refs/replace",
+        "nested-repo",
+        "ignored.log",
+        "config.worktree",
+    ]:
+        assert want in rep, f"AI-A12: в отчёте нет {want!r}: {rep!r}"
+    assert "refs/heads/main" not in rep and "текущая ветка" not in rep, (
+        f"AI-A12: коммит в текущую ветку не должен попадать в отчёт: {rep!r}"
     )
 
-    agent_branch = machine.succeed(
-        f"su - agent -c 'git -C {clone_path} branch --show-current'"
-    ).strip()
-    assert agent_branch.startswith("agent/dsh/"), (
-        f"клон должен быть на отдельной ветке agent/<роль>/<метка>, получено: {agent_branch!r}"
-    )
-    assert agent_branch != user_branch_before, "ветка агента не должна совпадать с веткой пользователя"
-
-    user_branch_after = machine.succeed(
-        "su - agent -c 'git -C /home/agent/proj-git branch --show-current'"
-    ).strip()
-    assert user_branch_after == user_branch_before, (
-        "AI-SBX-7: создание клона агента не должно переключать ветку исходного репозитория"
-    )
-
-    # push из клона агента — по умолчанию запрещён (pre-push хук).
-    machine.succeed(
-        f"su - agent -c 'echo x >> {clone_path}/README.md "
-        f"&& git -C {clone_path} commit -qam x'"
-    )
-    status, out = machine.execute(f"su - agent -c 'git -C {clone_path} push origin HEAD 2>&1'")
-    assert status != 0 and "AI-SBX-7" in out, (
-        f"AI-SBX-7: push из клона агента должен быть заблокирован, получено: {out!r}"
-    )
-
-    # Повторный вызов для того же (роль, репозиторий) переиспользует клон —
-    # не плодит его на каждый запуск.
-    clone_path_2 = machine.succeed(
-        "su - agent -c "
-        "'agents-git-isolate dsh /home/agent/state /home/agent/proj-git'"
-    ).strip()
-    assert clone_path_2 == clone_path, "повторный запуск должен переиспользовать тот же клон"
-
-    # Клон репозитория без коммитов: повторный запуск не падает, пока источник
-    # пуст, и подхватывает коммиты, когда они появились.
-    isolate_empty = (
-        "su - agent -c "
-        "'agents-git-isolate dsh /home/agent/state /home/agent/proj-empty'"
-    )
-    machine.succeed("su - agent -c 'git init -q /home/agent/proj-empty'")
-    empty_clone = machine.succeed(isolate_empty).strip()
-    empty_branch = machine.succeed(
-        f"su - agent -c 'git -C {empty_clone} symbolic-ref --short HEAD'"
-    ).strip()
-    assert empty_branch.startswith("agent/dsh/"), (
-        f"клон пустого репозитория должен быть на ветке агента, получено: {empty_branch!r}"
-    )
-    assert machine.succeed(isolate_empty).strip() == empty_clone, (
-        "пока источник пуст, повторный запуск должен вернуть тот же клон"
-    )
-
-    # Неотслеживаемый файл агента не затирается: отказ с понятной причиной.
-    machine.succeed(
-        "su - agent -c "
-        "'cd /home/agent/proj-empty "
-        "&& echo hi > README.md && git add . && git commit -qm init'"
-    )
-    machine.succeed(f"su - agent -c 'echo agent > {empty_clone}/README.md'")
-    status, out = machine.execute(isolate_empty + " 2>&1")
-    assert status != 0 and "мешающие файлы" in out, (
-        f"конфликт с файлом агента должен приводить к отказу, получено: {out!r}"
-    )
-    assert machine.succeed(f"su - agent -c 'cat {empty_clone}/README.md'").strip() == "agent", (
-        "неотслеживаемый файл агента не должен быть перезаписан"
-    )
-
-    machine.succeed(f"su - agent -c 'rm {empty_clone}/README.md'")
-    assert machine.succeed(isolate_empty).strip() == empty_clone, (
-        "после появления коммитов клон должен остаться тем же"
-    )
-    assert machine.succeed(
-        f"su - agent -c 'git -C {empty_clone} symbolic-ref --short HEAD'"
-    ).strip() == empty_branch, "ветка агента должна сохраниться"
-    source_head = machine.succeed("su - agent -c 'git -C /home/agent/proj-empty rev-parse HEAD'")
-    clone_head = machine.succeed(f"su - agent -c 'git -C {empty_clone} rev-parse HEAD'")
-    assert clone_head == source_head, "клон должен подхватить коммит источника"
-    machine.succeed(f"su - agent -c 'test -f {empty_clone}/README.md'")
-
-    # Каталог вне git — AI-SBX-7 неприменим, путь возвращается как есть.
-    passthrough = machine.succeed(
-        "su - agent -c 'agents-git-isolate dsh /home/agent/state /home/agent/project'"
-    ).strip()
-    assert passthrough == "/home/agent/project", (
-        "вне git-репозитория agents-git-isolate не должен подменять каталог"
-    )
+    # Каталог вне git: защита git не мешает, отчёт молчит.
+    machine.succeed(sandbox("touch ok2"))
+    assert machine.succeed(outside(f"agents-git report {PROJECT} /home/agent/snap 2>&1")).strip() == ""
 
     # --- AI-SBX-11 (ПРОВЕРИТЬ → ПРОВЕРЕНО для текущей конфигурации) ---------
     # Непривилегированные пользовательские пространства имён сейчас никто не

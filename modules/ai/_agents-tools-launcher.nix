@@ -8,7 +8,7 @@
   pkgs,
   lib,
   sandboxExec,
-  gitIsolate,
+  gitTool,
   claudeCode,
   deepseekHarness,
   aiderChat,
@@ -20,7 +20,8 @@ pkgs.writeShellApplication {
   runtimeInputs = [
     pkgs.direnv
     sandboxExec
-    gitIsolate
+    gitTool
+    pkgs.git
   ];
   text = ''
     usage() {
@@ -66,12 +67,10 @@ pkgs.writeShellApplication {
     # аргументом командной строки. $HOME здесь — настоящий домашний каталог:
     # agent-launcher выполняется до входа в песочницу.
     state_dir="$HOME/.local/state/agents/$role"
-    # AI-SBX-7: если $PWD внутри git-репозитория, агент получает отдельный
-    # клон на отдельной ветке вместо прямого доступа к чекауту пользователя
-    # (agents-git-isolate — та же логика для всех ролей, вынесена отдельно от
-    # per-role case ниже, т.к. не зависит от роли, кроме имени ветки).
-    # Сообщения о клоне/ветке идут в stderr и видны пользователю сразу.
-    project_dir=$(agents-git-isolate "$role" "$state_dir" "$PWD")
+    # AI-SBX-7 (ADR-44): работа на месте. Каталог проекта — корень git-дерева
+    # (иначе текущий каталог), на запись; метаданные git в песочнице только на
+    # чтение (agents-sandbox-exec). Рабочий каталог остаётся прежним (--cwd).
+    project_dir=$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")
 
     extra_env=()
     extra_bin_args=()
@@ -228,8 +227,20 @@ pkgs.writeShellApplication {
     # этим саму agents-sandbox-exec, она перестаёт быть видна (PATH
     # заменён раньше, чем мы входим в песочницу — проверено живьём).
     # Без .envrc в project_dir — безвредный no-op.
-    exec agents-sandbox-exec "$project_dir" "$state_dir" "$mode" \
+    # Отчёт после сессии (AI-SBX-7): снимок ссылок, флагов индекса, вложенных
+    # репозиториев и игнорируемых файлов до и сравнение после. Код возврата
+    # агента сохраняется; отчёт печатается и при прерывании (Ctrl-C приходит и
+    # агенту, и лаунчеру, который после этого доходит до отчёта).
+    report_snap=$(mktemp)
+    trap 'rm -f "$report_snap"' EXIT
+    agents-git snapshot "$project_dir" "$report_snap" || true
+
+    rc=0
+    agents-sandbox-exec "$project_dir" "$state_dir" "$mode" --cwd "$PWD" \
       ''${extra_env[@]+"''${extra_env[@]}"} ''${sandbox_opts[@]+"''${sandbox_opts[@]}"} -- \
-      direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@"
+      direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@" || rc=$?
+
+    agents-git report "$project_dir" "$report_snap" || true
+    exit "$rc"
   '';
 }

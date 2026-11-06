@@ -29,10 +29,13 @@
 # падает. Для DeepSeek Harness точный механизм подстановки ключа/модели —
 # ПРОВЕРИТЬ (dev preview, свой формат профиля, не переменные окружения
 # OpenAI-стиля, насколько подтверждено по `dsh --help`).
-# AI-SBX-7: перед входом в песочницу лаунчер через agents-git-isolate
-# заводит агенту отдельный клон репозитория на отдельной ветке (не
-# worktree — см. обоснование в _agents-tools-git-isolate.nix) и блокирует
-# push pre-push-хуком по умолчанию; слияние — вручную, человеком.
+# AI-SBX-7 (ADR-44): работа на месте. Агент работает в текущем дереве проекта
+# и коммитит; метаданные git (config, hooks, info, `.envrc`) в песочнице только
+# на чтение, общий git-каталог привязан к себе, `.direnv` у роли свой
+# (_agents-tools-sandbox.nix). После сессии лаунчер печатает отчёт
+# (_agents-tools-git.nix): сдвинутые ссылки, флаги индекса,
+# вложенные репозитории, изменённые игнорируемые файлы. Слияние и публикация —
+# только человек.
 # Зависимости: нет импорта фич (ARCH-3); `direnv` берётся как пакет через
 # pkgs.direnv, активация — дело env-manager-direnv на хосте (FEAT-8).
 _: {
@@ -44,8 +47,8 @@ _: {
       ...
     }:
     let
-      sandboxExec = pkgs.callPackage ./_agents-tools-sandbox.nix { };
-      gitIsolate = pkgs.callPackage ./_agents-tools-git-isolate.nix { };
+      gitTool = pkgs.callPackage ./_agents-tools-git.nix { };
+      sandboxExec = pkgs.callPackage ./_agents-tools-sandbox.nix { inherit gitTool; };
 
       # Имя роли для каждого агента берётся из политики хоста, а не пишется
       # строкой здесь: иначе в лаунчер попадает роль, которой на хосте нет, и
@@ -86,7 +89,7 @@ _: {
         inherit
           lib
           sandboxExec
-          gitIsolate
+          gitTool
           claudeCode
           deepseekHarness
           aiderChat

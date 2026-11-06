@@ -16,6 +16,9 @@ _: {
       "ml"
       "containers"
     ];
+    # SEC-10: идентичность коммитов — анонимизированный адрес хостинга, не личная почта.
+    git.name = "Shuchalin Georgiy";
+    git.email = "108734917+H0tabych@users.noreply.github.com";
     # Рабочая копия dotfiles (R4.6, DOT-4); включает симлинки ~/.config/<app>.
     dotfiles.source = "/home/sgm/.dotfiles";
   };

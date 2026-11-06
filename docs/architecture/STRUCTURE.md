@@ -326,6 +326,7 @@ tests/
 | `dotfiles-clone` | Клонировать dotfiles в путь из `dotfiles.source`, если его там ещё нет (DOT-4) |
 | `add-host <имя>`, `add-user <имя>`, `new-feature <домен> <имя>` | Создание из шаблонов вместе с правками `.sops.yaml` и пресета |
 | `hibernate-offset` | Вычисление `my.host.resume.offset` (STO-5) |
+| `hooks` | Включить pre-commit хук сканера секретов в этом клоне: `git config core.hooksPath scripts/git-hooks` (SEC-9; оболочка разработки хук не ставит — AI-SBX-7) |
 | `sops-edit <файл>`, `sops-rekey` | Работа с секретами |
 
 ---

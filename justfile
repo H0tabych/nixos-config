@@ -72,6 +72,11 @@ hibernate-offset file="":
 bench-prompt config *dirs:
     python3 scripts/bench-prompt.py --config {{ config }} {{ dirs }}
 
+# SEC-9: pre-commit сканер секретов. Однократно на клон; devshell этого не делает
+# (AI-SBX-7: shellHook, переписывавший core.hooksPath, обходил защиту метаданных git).
+hooks:
+    git config core.hooksPath scripts/git-hooks
+
 sops-edit file:
     sops {{ file }}
 

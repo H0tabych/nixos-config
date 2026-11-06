@@ -19,6 +19,10 @@ _: {
     gid = null;
     # USER-4, словарь: desktop development office media gaming ml containers
     capabilities = [ ];
+    # SEC-10: git-идентичность для публичных коммитов — имя и анонимизированный
+    # адрес хостинга (не личная почта, SEC-5). null — machine.d/git-identity не создаётся.
+    git.name = null;
+    git.email = null;
     # DOT-4: путь к рабочей копии dotfiles; null — симлинки ~/.config не создаются.
     dotfiles.source = null;
   };

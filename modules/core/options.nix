@@ -30,6 +30,18 @@
               default = [ ];
               description = "Список возможностей пользователя (USER-4).";
             };
+            git = {
+              name = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Имя автора коммитов (SEC-10); попадает в machine.d/git-identity.";
+              };
+              email = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Анонимизированный адрес хостинга для коммитов (SEC-10), не личная почта.";
+              };
+            };
             dotfiles.source = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               default = null;

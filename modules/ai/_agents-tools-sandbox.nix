@@ -21,16 +21,22 @@
 # `--config`), каждый отдельным ro-bind (симлинк в dotfiles разрешает ядро).
 # Запись — только `project-dir` и `state-dir`, оба передаются вызывающим явно.
 # У роли свои XDG_CACHE/STATE/DATA_HOME внутри state-dir.
+# AI-SBX-7 (ADR-44, R9.15): работа на месте. Проект — на запись, метаданные git
+# и `.envrc` — только чтение, общий git-каталог привязан к себе (список даёт
+# `agents-git binds`). `.direnv` у роли свой (в state-dir). Отчёт — `agents-git`.
 # AI-SBX-3: окружение пересобирается с нуля (`env -i`); ключ доступа к шлюзу
 # попадает значением через `--pass-env` (из окружения самого процесса, не из
 # argv — не виден в `ps`), путь к файлу с ключом не пробрасывается.
-{ pkgs }:
+{ pkgs, gitTool }:
 pkgs.writeShellApplication {
   name = "agents-sandbox-exec";
-  runtimeInputs = [ pkgs.bubblewrap ];
+  runtimeInputs = [
+    pkgs.bubblewrap
+    gitTool
+  ];
   text = ''
     usage() {
-      echo "usage: agents-sandbox-exec <project-dir> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--home-rw] -- <cmd...>" >&2
+      echo "usage: agents-sandbox-exec <project-dir> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--cwd PATH] [--home-rw] -- <cmd...>" >&2
       exit 1
     }
 
@@ -52,6 +58,7 @@ pkgs.writeShellApplication {
     # --config — каталог роли в ~/.config (белый список AI-SBX-2), только чтение.
     # --app-path — собственный каталог (или файл) приложения на запись
     # (§2.5, класс D: токены, которые приложение само сохраняет при входе).
+    # --cwd — рабочий каталог внутри project-dir (по умолчанию он сам).
     # --home-rw — ОСЛАБЛЕННЫЙ режим (AI-SBX-12, решение владельца по роли):
     # $HOME открыт на запись целиком; корень из разрешённого, сокеты сессии и
     # секреты шлюза остаются недоступны, запись вне $HOME запрещена. Теряются
@@ -61,6 +68,7 @@ pkgs.writeShellApplication {
     pass_env=()
     config_dirs=()
     app_paths=()
+    cwd_arg=""
     home_rw=0
     while :; do
       case "''${1:-}" in
@@ -81,6 +89,10 @@ pkgs.writeShellApplication {
           ;;
         --app-path)
           app_paths+=("$2")
+          shift 2
+          ;;
+        --cwd)
+          cwd_arg="$2"
           shift 2
           ;;
         --home-rw)
@@ -115,6 +127,19 @@ pkgs.writeShellApplication {
       echo "  запуск запрещён (AI-SBX-2: это открыло бы агенту секреты и ключи)." >&2
       echo "  Перейдите в каталог конкретного проекта и повторите." >&2
       exit 1
+    fi
+
+    # --cwd обязан лежать внутри project-dir (иначе chdir вывел бы в пустой tmpfs).
+    cwd_real="$project_real"
+    if [ -n "$cwd_arg" ]; then
+      cwd_real=$(realpath -- "$cwd_arg")
+      case "$cwd_real" in
+        "$project_real" | "$project_real"/*) ;;
+        *)
+          echo "agents-sandbox-exec: --cwd ($cwd_real) вне project-dir ($project_real)" >&2
+          exit 1
+          ;;
+      esac
     fi
 
     # HOME остаётся НАСТОЯЩИМ путём (внутри — пустой tmpfs), иначе `~/...`
@@ -186,12 +211,23 @@ pkgs.writeShellApplication {
       done
     fi
 
+    # Кэш окружения проекта (AI-SBX-7): у роли свой, по хэшу пути проекта.
+    direnv_cache="$state_dir/direnv/$(printf '%s' "$project_real" | sha256sum | cut -c1-16)"
+    mkdir -p "$direnv_cache"
     bwrap_args+=(
       --bind "$project_dir" "$project_dir"
       --bind "$state_dir" "$state_dir"
+      --bind "$direnv_cache" "$project_dir/.direnv"
       --ro-bind-try "$direnv_data" "$state_dir/data/direnv"
-      --chdir "$project_dir"
+      --chdir "$cwd_real"
     )
+
+    # AI-SBX-7: список монтирований защиты git даёт `agents-git binds`; через
+    # файл (не подстановку процесса), чтобы отказ останавливал запуск (set -e).
+    git_binds_file=$(mktemp)
+    agents-git binds "$project_dir" "$project_real" > "$git_binds_file"
+    mapfile -d "" -t git_bind_args < "$git_binds_file"
+    bwrap_args+=(''${git_bind_args[@]+"''${git_bind_args[@]}"})
     for p in ''${app_paths[@]+"''${app_paths[@]}"}; do
       bwrap_args+=(--bind-try "$p" "$p")
     done
@@ -208,6 +244,7 @@ pkgs.writeShellApplication {
     # AI-SBX-6 (fail-closed): любая ошибка bwrap (в том числе недоступность
     # пользовательских пространств имён, AI-SBX-11) останавливает скрипт
     # (`set -e`) до исполнения целевой команды.
+    rm -f "$git_binds_file"
     exec env -i "''${env_args[@]}" bwrap "''${bwrap_args[@]}" -- "$@"
   '';
 }
