@@ -57,7 +57,14 @@ _: {
           Description = "Панель (eww): окна по мониторам";
           PartOf = [ "eww.service" ];
           Requires = [ "eww.service" ];
-          After = [ "eww.service" ];
+          # graphical-session.target — обязательно: у цели без явного порядка systemd
+          # добавляет неявное After= на всё, что в неё входит (Wants), и получается цикл
+          # target → eww-bars → eww → target (старт панели отменялся, а выход из сессии
+          # зависал на таймауте session-scope).
+          After = [
+            "graphical-session.target"
+            "eww.service"
+          ];
           ConditionPathExists = "%h/.config/eww/scripts/bars";
         };
         Service = {
