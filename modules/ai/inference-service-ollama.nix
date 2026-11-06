@@ -50,6 +50,28 @@
             -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null || true
         done
       '';
+
+      # Ollama определяет GPU один раз, при старте. На загрузке он стартует раньше, чем udev
+      # поднял модуль NVIDIA и появились устройства (2026-11-06: обнаружение в 13:02:34.9, а
+      # nvidia_uvm и nvidia-drm загрузились в 13:02:35), и сервис молча оставался на CPU до
+      # первого перезапуска (AI-INF-6, AI-A5: «без ручных действий»). Поэтому перед стартом
+      # ждём драйвер с ограничением по времени и подгружаем nvidia_uvm — как post-resume ниже.
+      # Нет драйвера за отведённое время — старт не блокируется: сервис работает на CPU, а
+      # причина остаётся в журнале.
+      gpuReady = pkgs.writeShellScript "inference-gpu-ready" ''
+        wait_for() { # условие, секунды
+          for _ in $(${pkgs.coreutils}/bin/seq 1 $(( $2 * 10 ))); do
+            eval "$1" && return 0
+            ${pkgs.coreutils}/bin/sleep 0.1
+          done
+          return 1
+        }
+        wait_for '[ "$(${pkgs.coreutils}/bin/cat /sys/module/nvidia/initstate 2>/dev/null)" = live ]' 30 \
+          || { echo "inference-gpu-ready: драйвер NVIDIA не поднялся за 30 с, сервис стартует без GPU" >&2; exit 0; }
+        ${pkgs.kmod}/bin/modprobe nvidia_uvm || true
+        wait_for '[ -e /dev/nvidia-uvm ]' 10 \
+          || echo "inference-gpu-ready: /dev/nvidia-uvm не появился за 10 с" >&2
+      '';
     in
     {
       my.ai.local = roles;
@@ -68,6 +90,11 @@
       };
 
       environment.systemPackages = [ inferenceRelease ];
+
+      # "+": модуль грузит root, основной процесс остаётся в песочнице сервиса.
+      systemd.services.ollama.serviceConfig.ExecStartPre = lib.mkIf (gpu.compute == "cuda") [
+        "+${gpuReady}"
+      ];
 
       # AI-INF-8: каталог моделей лежит на томе данных, а не в состоянии сервиса, поэтому его
       # владелец должен быть известен заранее. При DynamicUser UID выбирается при старте, и

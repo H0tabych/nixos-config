@@ -235,6 +235,7 @@ nix eval --json .#nixosConfigurations.ci-vm.options.my --apply builtins.attrName
 |---|---|---|
 | ~~AI-A3, AI-RES-3~~ | Закрыто 2026-11-05. Раньше dGPU не уходил в suspended: при `finegrained = false` `power/control = on`, `Runtime D3 status: Disabled by default` | Решение — тест ниже, этап Б2 |
 | AI-A5, AI-A9 | Части, зависящие от M2 | Гейт 7.3 на машине (ADR-41) |
+| ~~AI-INF-6, AI-A5~~ | Исправлено 2026-11-06, проверка — после перезагрузки на машине. После загрузки `ollama` определял GPU раньше, чем поднялся драйвер (в журнале `inference compute id=cpu`, `size_vram 0`) и работал на CPU | `ExecStartPre` у `ollama.service` (`inference-gpu-ready`): ждёт `/sys/module/nvidia/initstate = live` до 30 с, подгружает `nvidia_uvm`. Проверка: после перезагрузки `journalctl -u ollama -b \| grep 'inference compute'` — `library=CUDA`, а `/api/ps` — `size == size_vram` |
 | ~~AI-INF-8, STO-1, STO-8~~ | Закрыто 2026-11-05. Раньше модели лежали в `/var/lib/ollama/models` на `@rootfs` и попадали в снимки корня | Исправление ниже |
 
 ### Исправление AI-INF-8 (2026-11-05)
