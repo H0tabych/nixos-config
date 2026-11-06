@@ -1,7 +1,7 @@
 # Проверка свойства (STRUCTURE 5.1): режим M2 целиком — настоящие фичи клиента,
 # настоящее рукопожатие Reality с выходом, захват пакетов на стороне провайдера.
 # Покрывает то, что не выразить проверкой конфига: VPN-A5…A8 и M2-1, M2-2, M2-3,
-# M2-5, M2-6, M2-8 гейта 7.3 (VPN_SUBSYSTEM 7.3). M2-4 (гибернация), M2-7 (нагрузка)
+# M2-5, M2-6, M2-8 гейта 7.3 (VPN_SUBSYSTEM 7.3), включая обход по uid (VPN-INT-3, ADR-43). M2-4 (гибернация), M2-7 (нагрузка)
 # и работа с настоящим Wi-Fi и корпоративным VPN проверяются на машине.
 #
 # Зачем именно так. Гейт 7.3 от 2026-10-14 проверялся на единственной рабочей сети и
@@ -178,6 +178,7 @@ pkgs.testers.runNixOSTest {
       {
         imports = [
           n.host-facts
+          n.net-facts
           n.nix-settings
           sopsStub
           n.firewall
@@ -196,6 +197,17 @@ pkgs.testers.runNixOSTest {
           users = [ ];
         };
         my.tunnel = tunnelOptions "m2";
+        my.net.bypass.users = [ "bypass-probe" ];
+
+        # Клиент обхода (ADR-43): системный пользователь с явным uid, как у торрент-службы.
+        users = {
+          users.bypass-probe = {
+            isSystemUser = true;
+            uid = 990;
+            group = "bypass-probe";
+          };
+          groups.bypass-probe = { };
+        };
 
         virtualisation = {
           vlans = [
@@ -423,6 +435,14 @@ pkgs.testers.runNixOSTest {
         return client.succeed(f"curl -sS --max-time 20 {url}").strip()
 
 
+    def as_bypass(cmd: str) -> str:
+        # Под пользователем обхода; системный PATH, чтобы не зависеть от окружения юнита.
+        return client.succeed(
+            "systemd-run --uid=bypass-probe --wait --pipe --quiet "
+            + "env PATH=/run/current-system/sw/bin " + cmd
+        ).strip()
+
+
     def wait_tunnel() -> None:
         client.wait_until_succeeds(f"ip -4 route show table 7777 | grep -q 'default dev {TUN}'", timeout=60)
         client.wait_until_succeeds(f"curl -sS --max-time 10 {WEB} | grep -qx {RELAY_IP}", timeout=60)
@@ -479,6 +499,25 @@ pkgs.testers.runNixOSTest {
 
       assert_no_leaks("обычная работа")
 
+      with subtest("VPN-INT-3, M2-8: пользователь обхода выходит напрямую, остальные — через туннель"):
+          assert as_bypass(f"curl -sS --max-time 20 {WEB}") == CLIENT_IP
+          assert fetch() == RELAY_IP
+          # Зарубежное имя разрешается только DoH внутри туннеля; соединение с адресом при этом прямое.
+          assert as_bypass("curl -sS --max-time 20 http://foreign.test/") == CLIENT_IP
+
+      with subtest("VPN-KS-5: DNS пользователя обхода мимо системного резолвера получает отказ"):
+          rc, out = client.execute(
+              "systemd-run --uid=bypass-probe --wait --pipe --quiet env PATH=/run/current-system/sw/bin "
+              + "dig +short +time=3 +tries=1 @8.8.8.8 foreign.test"
+          )
+          assert rc != 0 or out.strip() == "", f"прямой DNS обходного пользователя не отрезан: {out!r}"
+
+      with subtest("VPN-INT-3: обход ограничен пользователем, а не меткой всего хоста"):
+          out = client.succeed("nft list chain inet tunnel-marks bypass")
+          assert "skuid 990" in out, out
+          rules = client.succeed("ip -4 rule show")
+          assert "uidrange 990-990 lookup main" in rules, rules
+
       with subtest("M2-6: минимальные права клиента (VPN-CLI-5)"):
           props = client.succeed("systemctl show tunnel-xray -p DynamicUser,AmbientCapabilities,CapabilityBoundingSet,NoNewPrivileges")
           assert "DynamicUser=yes" in props, props
@@ -510,6 +549,10 @@ pkgs.testers.runNixOSTest {
           assert rc != 0, "имя разрешилось без туннеля"
           client.execute("sleep 3")
           assert_no_leaks("клиент остановлен")
+          # Остановка клиента не ломает обход (метка пропускает kill switch), остальные по-прежнему получают отказ.
+          assert as_bypass(f"curl -sS --max-time 10 {WEB}") == CLIENT_IP
+          rc, _ = client.execute(f"curl -s -o /dev/null --max-time 10 {WEB}")
+          assert rc == 7, f"обычный пользователь не получил отказ: {rc}"
           client.execute("systemctl stop download")
 
       with subtest("Падение клиента: маршрут исчезает с устройством, клиент восстанавливается"):

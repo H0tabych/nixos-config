@@ -14,6 +14,7 @@ in
       n.hm
       n.fonts
       n.host-facts
+      n.net-facts
       n.sops
       n.ssh
       n.firewall

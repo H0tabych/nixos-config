@@ -105,7 +105,7 @@ nixos-config/
 | Домен | Критерий принадлежности («это про…») | Примеры файлов |
 |---|---|---|
 | `core` | сам репозиторий, не система | `options`, `lib`, `treefmt`, `checks-*` |
-| `base` | то, без чего не работает ни один хост | `nix-settings`, `locale-keyboard`, `users`, `hm`, `fonts`, `host-facts` |
+| `base` | то, без чего не работает ни один хост | `nix-settings`, `locale-keyboard`, `users`, `hm`, `fonts`, `host-facts`, `net-facts` |
 | `hardware` | физические устройства и их питание | `gpu-*`, `power`, `sleep`, `audio`, `bluetooth` |
 | `storage` | диск, swap, снимки, бэкап | `layout`, `swap`, `maintenance`, `backup` |
 | `security` | защита и секреты | `sops`, `ssh`, `hardening`, `firewall` |
@@ -127,7 +127,7 @@ nixos-config/
 | Файл фичи | `kebab-case.nix`; **имя файла = имя фичи** (FEAT-1) = ключ `flake.modules.<класс>.<имя>` | `notifier-xyz.nix` |
 | Реализация слота | `<слот>-<реализация>`; слот — роль из каталога; `<р>` — **основная программа**, сопутствующие утилиты живут внутри файла | `bar-xyz.nix`, `screenshot-xyz.nix` |
 | Набор без слота | Без суффикса; признак — замена одной программы другой не имеет смысла (в наборе несколько равноправных программ) | `databases.nix`, `vcs-tools.nix`, `lsp-global.nix`, `fonts.nix`, `theme.nix` |
-| Фича-факты | `<подсистема>-facts`: только объявления опций `my.*`, без логики (ARCH-4) | `host-facts.nix`, `ai-facts.nix`, `tunnel-facts.nix` |
+| Фича-факты | `<подсистема>-facts`: только объявления опций `my.*`, без логики (ARCH-4) | `host-facts.nix`, `ai-facts.nix`, `tunnel-facts.nix`, `net-facts.nix` |
 | Приватная часть | `_<владелец>-<часть>.<ext>` рядом с владельцем (3.4) | `_tunnel-policy.nix` |
 | Пресет | Имя класса хоста или capability, без суффикса; **файл = пресет** | `desktop.nix`, `laptop.nix` |
 | Хост | `<имя-хоста>.nix`; имя — уникальное, не совпадающее с именем фичи или пресета; рекомендуемый вид `<владелец-или-роль>-<класс>` | `alice-laptop.nix` |
@@ -544,7 +544,7 @@ nixos-config/
 │   │                         audio  bluetooth  automount  firmware  [vendor-asus]
 │   ├── storage/              layout  swap  maintenance  backup  ephemeral-root
 │   ├── security/             sops  ssh  hardening  firewall
-│   ├── network/              network-manager  dns-resolver  vpn-client
+│   ├── network/              net-facts  network-manager  dns-resolver  vpn-client
 │   │                         tunnel-facts  tunnel-xray  [tunnel-server-xray]  killswitch
 │   │                         route-switch  _tunnel-xray-policy.nix  _killswitch-rules.nft
 │   ├── desktop/              session-hyprland  display-manager-sddm  bar-eww
@@ -602,14 +602,14 @@ dotfiles/                     (отдельный репозиторий)
 
 | Пресет | Вид | nixos (N) | homeManager (H) |
 |---|---|---|---|
-| `base` | класс хоста | nix-settings, locale-keyboard, users, hm, fonts, host-facts, sops, ssh, firewall, hardening, network-manager, shell-zsh, env-manager-direnv, vcs-tools, prompt-starship, dotfiles-link | — |
+| `base` | класс хоста | nix-settings, locale-keyboard, users, hm, fonts, host-facts, net-facts, sops, ssh, firewall, hardening, network-manager, shell-zsh, env-manager-direnv, vcs-tools, prompt-starship, dotfiles-link | — |
 | `laptop` | класс хоста | power, sleep, layout, swap, maintenance, firmware, audio, bluetooth, automount | — |
 | `user-base` | базис пользователя (ADR-32) | — | dotfiles-link, user-dirs, prompt-starship |
 | `desktop` | capability | session-hyprland, display-manager-sddm, lockscreen-hyprlock, idle-hypridle, polkit-agent-hyprpolkitagent, osd-swayosd, bluetooth-manager-blueman, theme | bar-eww, notifier-mako, launcher-rofi, wallpaper-hyprpaper, screenshot-grim, clipboard-cliphist, polkit-agent-hyprpolkitagent, osd-swayosd, automount-agent-udiskie, bluetooth-manager-blueman, terminal-foot, file-manager-yazi, effects-profile, theme |
 | `development` | capability | editor-neovim | lsp-global, databases, [api-tools] |
 | `containers` | capability | containers-docker | containers-docker |
 | `office` | capability | — | office-suite-libreoffice, mail-calendar-thunderbird, documents-zathura, communication-telegram |
-| `media` | capability | browser-firefox (APP-3: политики браузера — на уровне NixOS) | video-player-mpv, torrent-transmission |
+| `media` | capability | browser-firefox (APP-3: политики браузера — на уровне NixOS), torrent-transmission (служба, ADR-43) | video-player-mpv, torrent-transmission (клиент) |
 | `gaming` | capability | game-platform-steam, compat-layer-proton-ge, game-optimizer-gamemode, overlay-mangohud | overlay-mangohud |
 | `ml` | capability | ai-facts, compute-cache, inference-service-ollama, container-gpu-nvidia, llm-gateway | llm-gateway, agents-tools, code-context |
 | `tunnel` | среда хоста | tunnel-facts, tunnel-xray, killswitch, dns-resolver, route-switch | — |
