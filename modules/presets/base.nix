@@ -1,5 +1,5 @@
 # Фича: base · Слот: — · Домен: presets · Классы: N · Для: всех хостов класса base
-# Контракт: STR-7 (пресет — только imports). hardening добавится в R9.1.
+# Контракт: STR-7 (пресет — только imports).
 # Зависимости: —
 { config, ... }:
 let
@@ -18,6 +18,7 @@ in
       n.sops
       n.ssh
       n.firewall
+      n.hardening
       n.network-manager
       n.dotfiles-link
       n.shell-zsh
