@@ -183,18 +183,18 @@ done | sort -n
 | № | Состояние | Основание |
 |---|---|---|
 | AI-A1 | Да (2026-11-06) | `just check` на HEAD после R5.4 (включая ВМ-тесты); `ci-vm` без `ml`: `services.ollama.enable = false`, `my` содержит только `host` и `net` (раздел 7) |
-| AI-A2 | Да, кроме `local-chat` | Раздел 5; роль на этом классе не объявлена |
+| AI-A2 | Да, кроме `local-chat` | Раздел 5; роль на этом классе не объявлена. GPU видна драйверу и проектному окружению `ml-cuda` (`nvidia-smi -L` и `nvcc` в `nix develop`), инференс на `library=CUDA` — перепроверено 2026-11-06 при отключённом GSP (A7) |
 | AI-A3 | Да (2026-11-05) | После `inference-release` `runtime_status = suspended`, `Runtime D3 status: Enabled (fine-grained)`; нужны проприетарные модули и `NVreg_EnableGpuFirmware=0`, раздел 8 |
 | AI-A4 | Да (2026-11-05) | Bannerlord через Steam: `nvidia-offload gamemoderun mangohud %command%`; во время игры `/api/ps` пуст, после игры GPU `suspended`, FIM загрузилась по требованию |
 | AI-A5 | Да (2026-11-06) | В M2: 5 циклов hibernate (3 до и 2 после исправления порядка юнитов), после каждого: правила `31999/32000/32001` и таблица `killswitch` на месте, адрес выхода сразу, `ollama` определил `library=CUDA`, модель по запросу — `size == size_vram`; ручных действий нет. Попутно найдены и исправлены две гонки (раздел 8): GPU на загрузке и VRAM в файл перед сном. 2026-11-05 — три цикла в M1 |
-| AI-A6 | Отметка R8.5 | |
-| AI-A7, AI-A8 | Отметка R8.6 | `tests/agent-sandbox.nix`; для роли AI-SBX-12 набор урезан решением владельца |
+| AI-A6 | Да (2026-11-06) | Секреты `ai.gateway.*` в `/run/secrets` с правами `400`, владелец — пользователь; значений нет в `/nix/store` (поиск по замыканию шлюза). Сторона «пользователь без `ml`» — `tests/` и вычисление `ci-vm` (AI-A1) |
+| AI-A7, AI-A8 | Да (2026-11-06) | `tests/agent-sandbox.nix` проходит на HEAD (`just check`); для роли AI-SBX-12 набор урезан решением владельца |
 | AI-A9 | Да (2026-11-06) | В M2 без прокси-переменных: `cost-autonomous` — `HTTP 200`, 2,6 с. С остановленным `tunnel-xray` — `HTTP 502 provider_connection_failed (no route to host)` за 1 мс, шлюз `active` |
 | AI-A10 | Отметка R8.6 | |
 | AI-A11 | Отметка R8.7 | Headless-прогон на Python, C/C++, Rust (`ai/code-context`) |
 | AI-A12 | Отметка R8.6 | |
 | AI-A13 | Да | Раздел 7: проба заменой реализации и живой запрос роли через шлюз |
-| AI-A14 | Отметка R8.5 | |
+| AI-A14 | Да (2026-11-06) | `llm-gateway` `active` без облачных ключей роли `cost-autonomous` в M2; при остановленном туннеле остаётся `active` (AI-A9) |
 
 S8 (R8.9): гейт на собственный индекс не пройден, L5 не делаем. Решение и условие
 пересмотра — в `docs/adr/ADR-023-code-context-ready-first.md`.
