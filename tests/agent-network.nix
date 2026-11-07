@@ -18,9 +18,7 @@ let
   gitTool = pkgs.callPackage ../modules/ai/_agents-tools-git.nix { };
   netTool = pkgs.callPackage ../modules/ai/_agents-tools-net.nix { };
   sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix { inherit gitTool netTool; };
-  dshProfile = pkgs.callPackage ../modules/ai/_agents-tools-dsh-profile.nix {
-    dshRole = "cost-autonomous";
-  };
+  dshPolicy = pkgs.callPackage ../modules/ai/_agents-tools-dsh-policy.nix { };
 
   # Заглушка агента: `--probe <команда...>` — выполнить команду внутри песочницы;
   # `--port N` — подняться как веб-интерфейс на этом порту и ждать.
@@ -28,6 +26,7 @@ let
     name:
     pkgs.writeShellScriptBin name ''
       touch "$PWD/stub-started-${name}"
+      printf '%s\n' "$@" > "$PWD/stub-args-${name}"
       port=""
       while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -48,7 +47,7 @@ let
       sandboxExec
       netTool
       gitTool
-      dshProfile
+      dshPolicy
       ;
     tunnelHttpPort = 10809;
     dshWebPortBase = 11600;
@@ -152,7 +151,7 @@ pkgs.testers.runNixOSTest {
         f"'export AI_GATEWAY_KEYS_DIR=/run/llm-gateway/agent' > {HOME}/.config/machine.d/ai-gateway-env"
     )
     machine.succeed("install -d -m755 /run/llm-gateway /run/llm-gateway/agent")
-    for key in ["aider-online", "aider-offline"]:
+    for key in ["aider-online", "aider-offline", "dsh-online", "dsh-offline"]:
         machine.succeed(f"echo {key}-key > /run/llm-gateway/agent/{key} && chown agent:agent /run/llm-gateway/agent/{key}")
     as_agent(f"printf '%s\n' '# рабочие деревья' '~/work' > {HOME}/.config/ai/work-roots")
     as_agent(f"touch {HOME}/other/marked/.ai/offline")
@@ -171,6 +170,8 @@ pkgs.testers.runNixOSTest {
     if test -S /nix/var/nix/daemon-socket/socket; then echo nixd=OPEN; else echo nixd=CLOSED; fi
     echo "proxyenv=$(printenv http_proxy)"
     echo "key=$(printenv OPENAI_API_KEY)"
+    echo "dskey=$(printenv DEEPSEEK_API_KEY)"
+    echo "dsurl=$(printenv DEEPSEEK_BASE_URL)"
     """
 
 
@@ -255,6 +256,33 @@ pkgs.testers.runNixOSTest {
     assert r["ext_proxy"] == "external-ok" and r["gateway"] == "", (
         f"claude в online: выход через прокси, шлюз ему не нужен: {out}"
     )
+
+    # === dsh нативно (R9.18, AI-ROLE-5): окружение, политика патчем, профили не пишутся ==
+    DSH_PROFILES = f"{HOME}/.local/state/agents/dsh/dsh-home/profiles"
+    as_agent(f"mkdir -p {DSH_PROFILES}/web {DSH_PROFILES}/headless")
+    # Прежний лаунчер писал свой патч с меткой — его убираем; файл интерфейса не трогаем.
+    as_agent(f"printf '%s\n' '# Сгенерировано agent-launcher (R8.6, R9.14) — правки будут перезаписаны.' '- id: llm-deepseek' > {DSH_PROFILES}/web/cordis.patch.yml")
+    as_agent(f"printf '%s\n' '- id: agent-default-model' '  config:' '    model: deepseek-v4-pro' > {DSH_PROFILES}/headless/cordis.patch.yml")
+    out, r = probe_in("dsh", f"{HOME}/other/free")
+    assert "режим online" in out, out
+    assert r["dskey"] == "dsh-online-key", f"ключ dsh — значением в окружении, по режиму online: {out}"
+    assert r["dsurl"] == "http://127.0.0.1:11501/anthropic", f"подключение окружением: {out}"
+    args = machine.succeed(f"cat {HOME}/other/free/stub-args-dsh")
+    assert "--patch\n${dshPolicy}\n" in args, f"политика Nix — флагом --patch из хранилища: {args}"
+    assert "dsh-online-key" not in args, f"ключ не в argv: {args}"
+    machine.fail(f"test -e {DSH_PROFILES}/web/cordis.patch.yml")  # метка лаунчера — файл убран
+    assert "deepseek-v4-pro" in machine.succeed(f"cat {DSH_PROFILES}/headless/cordis.patch.yml"), "файл интерфейса сохранён"
+    out, r = probe_in("dsh --offline", f"{HOME}/other/free")
+    assert r["dskey"] == "dsh-offline-key", f"ключ dsh по режиму offline: {out}"
+    # Задача текстом → headless, политика та же; веб-интерфейс — профиль web.
+    status, out = launch("dsh -- 'сделай что-нибудь'", f"{HOME}/other/free")
+    args = machine.succeed(f"cat {HOME}/other/free/stub-args-dsh")
+    assert args.startswith("--profile\nheadless\n--patch\n${dshPolicy}\n"), args
+    # Без ключа шлюза окружение подключения не задаётся (AI-GW-9).
+    machine.succeed("mv /run/llm-gateway/agent/dsh-online /run/llm-gateway/agent/dsh-online.off")
+    out, r = probe_in("dsh --online", f"{HOME}/other/free")
+    assert r["dskey"] == "" and r["dsurl"] == "", f"без ключа окружение подключения пусто: {out}"
+    machine.succeed("mv /run/llm-gateway/agent/dsh-online.off /run/llm-gateway/agent/dsh-online")
 
     # === dsh: веб-интерфейс внутри netns открывается с хоста (обратный мост) ==
     as_agent(f"rm -f {HOME}/other/free/stub-started-dsh")

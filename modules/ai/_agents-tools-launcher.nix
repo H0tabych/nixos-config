@@ -16,7 +16,7 @@
   deepseekHarness,
   aiderChat,
   aiderRole,
-  dshProfile,
+  dshPolicy,
 }:
 pkgs.writeShellApplication {
   name = "agent-launcher";
@@ -140,34 +140,32 @@ pkgs.writeShellApplication {
         ;;
       dsh)
         bin=${lib.getExe deepseekHarness}
-        # DSH_HOME — каталог СОСТОЯНИЯ: dsh создаёт в нём профиль и ставит бандлы,
-        # поэтому он в state_dir, а не в ~/.config (ro) — ПРОВЕРЕНО.
+        # DSH_HOME — каталог СОСТОЯНИЯ: dsh создаёт в нём профили, ставит бандлы и
+        # сам сохраняет выбор модели интерфейса, поэтому он в state_dir, а не в
+        # ~/.config (ro) — ПРОВЕРЕНО. Файлы профилей лаунчер НЕ пишет (D18).
         extra_env=(--env "DSH_HOME=$state_dir/dsh-home")
-        # dsh берёт ключ из DEEPSEEK_API_KEY — туда ключ доступа к шлюзу: роль,
-        # лимиты и журналы остаются на шлюзе (AI-GW-2/AI-GW-6). Без ключа —
-        # «MISSING_CREDENTIAL: llm-deepseek» (ПРОВЕРЕНО).
-        # Адрес и модель — ПАТЧЕМ ПРОФИЛЯ: имя модели dsh берёт только из плагина
-        # `agent-default-model` (ПРОВЕРЕНО: иначе шлюз отвечает «could not auto
-        # resolve a provider»). Патч пишется в DSH_HOME при каждом запуске; имя
-        # роли — от Nix, адрес — из машинного слоя (AI-ROLE-2, DOT-1). `provider:
-        # deepseek-official` — внутреннее имя маршрута dsh, провайдера решает шлюз.
+        # Нативное подключение (AI-ROLE-5, R9.18): шлюз — корень Messages-совместимого
+        # API (`DEEPSEEK_BASE_URL`, dsh добавляет `/v1/messages`), ключ доступа —
+        # `DEEPSEEK_API_KEY` значением. Модели — собственные модели провайдера из
+        # каталога интерфейса; шлюз маршрутизирует их по `nativeModels` не подменяя.
+        # Без ключа — «MISSING_CREDENTIAL» (ПРОВЕРЕНО), без шлюза (AI-GW-9) — тоже.
         if [ -n "''${AI_GATEWAY_URL:-}" ] && [ -n "$gw_key" ]; then
           export DEEPSEEK_API_KEY="$gw_key"
           sandbox_opts+=(--pass-env DEEPSEEK_API_KEY)
-          # Патч — в оба профиля лаунчера (web, headless); каталог создаём сами,
-          # dsh дописывает остальное рядом, не затирая патч (ПРОВЕРЕНО).
-          for dsh_prof in web headless; do
-            dsh_profile="$state_dir/dsh-home/profiles/$dsh_prof"
-            mkdir -p "$dsh_profile"
-            # Содержимое — из хранилища; подставляется только адрес.
-            case "$dsh_prof" in
-              web) dsh_src=${dshProfile.web} ;;
-              *) dsh_src=${dshProfile.headless} ;;
-            esac
-            dsh_text=$(<"$dsh_src")
-            printf '%s\n' "''${dsh_text//@GATEWAY_URL@/$AI_GATEWAY_URL}" > "$dsh_profile/cordis.patch.yml"
-          done
+          extra_env+=(--env "DEEPSEEK_BASE_URL=$AI_GATEWAY_URL/anthropic")
         fi
+        # Миграция (R9.18): прежний лаунчер писал в профили свой патч (метка в первой
+        # строке) — он перебил бы окружение (адрес, модель). Удаляем только такие
+        # файлы; файлы, которые сохранил интерфейс, не трогаем. Когда на машине
+        # старых файлов не останется, блок безвреден (нечего удалять).
+        for dsh_old in "$state_dir"/dsh-home/profiles/*/cordis.patch.yml; do
+          if [ -f "$dsh_old" ] && head -n 1 "$dsh_old" | grep -q '^# Сгенерировано agent-launcher'; then
+            rm -f -- "$dsh_old"
+          fi
+        done
+        # Политика Nix — патч из хранилища, на каждый запуск и при любых флагах
+        # пользователя (поиск, телеметрия, менеджер плагинов; см. файл политики).
+        dsh_policy_args=(--patch ${dshPolicy})
         # all_proxy отдаём пустым: dsh не поддерживает SOCKS и предупреждает об
         # этом на каждом запуске; HTTPS всё равно идёт через https_proxy, так
         # что туннель не обходится (AI_SUBSYSTEM.md §2.6, NET-10).
@@ -185,13 +183,13 @@ pkgs.writeShellApplication {
         # --port фиксирован (на пользователя): веб-интерфейс внутри netns виден
         # хосту через обратный мост rev:dsh-web (AI-SBX-5), порт тот же.
         case "''${1:-}" in
-          --*) : ;; # явные флаги dsh — передаём как есть, профиль выбирает пользователь
+          --*) extra_bin_args=("''${dsh_policy_args[@]}") ;; # явные флаги — как есть, профиль выбирает пользователь
           "")
             dsh_port=$(( ${toString dshWebPortBase} + $(id -u) - 1000 ))
-            extra_bin_args=(--profile web --no-open --port "$dsh_port")
+            extra_bin_args=(--profile web "''${dsh_policy_args[@]}" --no-open --port "$dsh_port")
             net_specs+=("rev:dsh-web:$dsh_port")
             ;;
-          *) extra_bin_args=(--profile headless) ;;
+          *) extra_bin_args=(--profile headless "''${dsh_policy_args[@]}") ;;
         esac
         ;;
       aider)

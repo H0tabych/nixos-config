@@ -109,13 +109,17 @@ let
                 n = int(self.headers.get("Content-Length") or 0)
                 body = self.rfile.read(n).decode() if n else ""
                 try:
-                    model = json.loads(body).get("model")
+                    parsed = json.loads(body)
+                    model = parsed.get("model")
                 except Exception:
-                    model = None
+                    parsed, model = {}, None
                 with open(LOG, "a") as f:
                     f.write(json.dumps({
                         "port": port, "path": self.path, "model": model,
                         "auth": self.headers.get("Authorization"),
+                        "keys": sorted(parsed),
+                        "tools": [t.get("function", {}).get("name") for t in parsed.get("tools") or []],
+                        "body": parsed,
                     }) + "\n")
                 out = json.dumps({
                     "id": "x", "object": "chat.completion", "created": 0, "model": model,
@@ -256,6 +260,41 @@ pkgs.testers.runNixOSTest {
         assert code == 200, (native, code, body)
         last = provider_log()[-1]
         assert (last["port"], last["model"]) == (9000, native), last
+
+    # --- AI-A17 (часть, видимая шлюзу): клиент dsh говорит по Messages (`/anthropic/v1/messages`,
+    # ключ в `x-api-key`) и ходит по собственной модели провайдера; рассуждение и инструменты
+    # должны дойти до провайдера, модель — не подмениться.
+    def ask_messages(model, token, extra):
+        body = {"model": model, "max_tokens": 64, "messages": [{"role": "user", "content": "hi"}]}
+        body.update(extra)
+        out = machine.succeed(
+            f"curl -s -m 20 -o /tmp/out -w '%{{http_code}}' -H 'x-api-key: {token}' "
+            f"-H 'anthropic-version: 2023-06-01' -H 'Content-Type: application/json' "
+            f"-d {shlex.quote(json.dumps(body))} http://127.0.0.1:{PORT}/anthropic/v1/messages; echo; cat /tmp/out"
+        )
+        code, _, rest = out.partition("\n")
+        return int(code), rest
+
+    tools = [{
+        "name": "read_file", "description": "read",
+        "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}},
+    }]
+    code, body = ask_messages(
+        "native-big", key("dsh-online"),
+        {"thinking": {"type": "enabled", "budget_tokens": 1024}, "tools": tools},
+    )
+    assert code == 200, f"Messages-маршрут dsh: {code} {body}"
+    last = provider_log()[-1]
+    assert (last["port"], last["model"]) == (9000, "native-big"), last
+    assert last["tools"] == ["read_file"], f"AI-A17: инструменты не дошли до провайдера: {last}"
+    print("AI-A17 (Messages → провайдер): поля запроса у провайдера:", last["keys"], last["body"].get("thinking"))
+    assert any(k in last["keys"] for k in ("thinking", "reasoning_effort", "reasoning")), (
+        f"AI-A17: режим рассуждения потерян при преобразовании шлюзом: {last['keys']}"
+    )
+    # Ключ режима offline и здесь не даёт облако; ключ чужого агента — тоже.
+    before = len(provider_log())
+    code, _ = ask_messages("native-big", key("dsh-offline"), {})
+    assert code != 200 and len(provider_log()) == before, "offline-ключ на Messages-маршруте"
 
     # --- Локальная роль доступна обоим режимам.
     for name in ["dsh-online", "dsh-offline", "aider-online", "aider-offline"]:

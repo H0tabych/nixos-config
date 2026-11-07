@@ -29,9 +29,7 @@ let
   gitTool = pkgs.callPackage ../modules/ai/_agents-tools-git.nix { };
   netTool = pkgs.callPackage ../modules/ai/_agents-tools-net.nix { };
   sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix { inherit gitTool netTool; };
-  dshProfile = pkgs.callPackage ../modules/ai/_agents-tools-dsh-profile.nix {
-    dshRole = "cost-autonomous";
-  };
+  dshPolicy = pkgs.callPackage ../modules/ai/_agents-tools-dsh-policy.nix { };
 in
 pkgs.testers.runNixOSTest {
   name = "agent-sandbox";
@@ -48,8 +46,7 @@ pkgs.testers.runNixOSTest {
     # EAI_AGAIN внутри песочницы, когда /run — пустой tmpfs).
     services.resolved.enable = true;
 
-    environment.etc."dsh-profile-web.yml".source = dshProfile.web;
-    environment.etc."dsh-profile-headless.yml".source = dshProfile.headless;
+    environment.etc."dsh-policy.yml".source = dshPolicy;
 
     environment.systemPackages = [
       sandboxExec
@@ -347,13 +344,26 @@ pkgs.testers.runNixOSTest {
     status, _ = machine.execute(sandbox("true", HRW, project="/"))
     assert status != 0, "project-dir = / запрещён в любом режиме"
 
-    # === Политика профилей dsh (R9.14): встроенный поиск выключен ============
-    for prof in ["web", "headless"]:
-        text = machine.succeed(f"cat /etc/dsh-profile-{prof}.yml")
-        for plugin in ["web-search-deepseek", "web-deepseek-api"]:
-            assert f"- id: {plugin}\n  disabled: true" in text, f"dsh/{prof}: {plugin} должен быть выключен"
-        assert "baseURL: @GATEWAY_URL@/anthropic" in text and "model: cost-autonomous" in text
-    assert "- id: tool-web\n  config:\n    search: false" in machine.succeed("cat /etc/dsh-profile-headless.yml")
+    # === Политика Nix для dsh (R9.14, R9.18): поиск, телеметрия, менеджер плагинов ==
+    text = machine.succeed("cat /etc/dsh-policy.yml")
+    for plugin in [
+        "web-search-deepseek",
+        "web-deepseek-api",
+        "plugin-manager",
+        "tool-plugin-manager",
+        "ui-plugin-manager",
+        "entry-customization",  # зависит от pluginNavigation ui-plugin-manager (иначе UI не грузится)
+    ]:
+        assert f"- id: {plugin}\n  disabled: true" in text, f"dsh: {plugin} должен быть выключен"
+    for plugin, cfg in [
+        ("tool-web", "search: false"),
+        ("session-telemetry-otel", "mode: DISABLED"),
+        ("session-log-deepseek", "enabled: false"),
+        ("plugin-package-inventory-deepseek", "enabled: false"),
+    ]:
+        assert f"- id: {plugin}\n  config:\n    {cfg}" in text, f"dsh: {plugin} — {cfg}"
+    # Подключение и модель в политике не задаются (AI-ROLE-5): только окружение и интерфейс.
+    assert "baseURL" not in text and "agent-default-model" not in text and "@GATEWAY_URL@" not in text
 
     # === AI-SBX-7, AI-A12 (ADR-44, R9.15): работа на месте ====================
     REPO = f"{AGENT}/proj-git"

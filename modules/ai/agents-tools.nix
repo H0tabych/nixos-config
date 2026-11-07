@@ -6,9 +6,13 @@
 # (ARCH-14, прецедент nix-settings.nix). aider-chat — из основного канала, версия та
 # же; в unstable он с 2026-10-19 не вычисляется: зависимость posthog помечена broken
 # при mcp >= 2 (ПРОВЕРЕНО `nix eval`, 2026-11-05).
-# DeepSeek Harness нет вообще (ни 26.05, ни unstable) — своя деривация
-# (_agents-tools-dsh-package.nix) с автозаменой на nixpkgs через `or`, как
-# только пакет там появится (проверять `nix search` перед `flake update`).
+# DeepSeek Harness в 26.05 нет, в unstable есть (0.2.1-rc.3, с обходом аддона
+# `node-addon-require-builtin`) — берём оттуда, как claude-code (ARCH-14);
+# собственной деривации больше нет (R9.18).
+# R9.18 (AI-ROLE-5): `dsh` подключается переменными окружения
+# (`DEEPSEEK_BASE_URL` — шлюз, `DEEPSEEK_API_KEY` — ключ доступа), ходит по
+# собственным моделям провайдера, профили в `$DSH_HOME` лаунчер не пишет; политика
+# Nix — патч из хранилища флагом `--patch` (_agents-tools-dsh-policy.nix).
 # AI-AGT-4: единственный способ запуска агентов — agent-launcher; небёрнутые
 # бинарники ролей в home.packages не попадают. AI-SBX-4: лаунчер активирует
 # проектное окружение через уже существующий `direnv` (env-manager-direnv,
@@ -23,16 +27,15 @@
 # (AI-SBX-1/2, R9.14) собирает корень из разрешённого и возвращает из ~/.config
 # только белый список (machine.d, ai, git, direnv) и каталоги роли (`--config`),
 # только чтение; остальной ~/.config, в т.ч. ключ расшифровки, не виден.
-# Роли из AI_SUBSYSTEM.md §4: claude → strong-autonomous, aider → local-chat
-# (явный потребитель по таблице ролей), dsh → cost-autonomous (решение
-# пользователя R8.5/R8.6). AI_SUBSYSTEM.md §2.5: ключ доступа к шлюзу
+# Роли из AI_SUBSYSTEM.md §4: claude — по подписке, aider → local-chat
+# (явный потребитель по таблице ролей); dsh ролей не использует — сквозной
+# маршрут собственных моделей провайдера (AI-ROLE-5). AI_SUBSYSTEM.md §2.5: ключ доступа к шлюзу
 # «лаунчер кладёт его только в окружение агента» — значение читается из
 # AI_GATEWAY_ACCESS_KEY_FILE здесь и уходит только в переменную окружения
 # самого процесса агента (через --pass-env), никогда на диск; при отсутствии
 # шлюза у пользователя (AI-GW-9) роль просто не получает авторизации, а не
-# падает. Для DeepSeek Harness точный механизм подстановки ключа/модели —
-# ПРОВЕРИТЬ (dev preview, свой формат профиля, не переменные окружения
-# OpenAI-стиля, насколько подтверждено по `dsh --help`).
+# падает. Для DeepSeek Harness ключ — `DEEPSEEK_API_KEY` (ПРОВЕРЕНО 2026-11-07
+# перехватом запроса: заголовок `x-api-key`, путь `<база>/v1/messages`).
 # AI-SBX-7 (ADR-44): работа на месте. Агент работает в текущем дереве проекта
 # и коммитит; метаданные git (config, hooks, info, `.envrc`) в песочнице только
 # на чтение, общий git-каталог привязан к себе, `.direnv` у роли свой
@@ -77,21 +80,15 @@ _: {
         "local-chat"
         "cost-autonomous"
       ];
-      dshRole = pickRole [
-        "cost-autonomous"
-        "strong-autonomous"
-      ];
 
       claudeCode = pkgs.unstable.claude-code;
       aiderChat = pkgs.aider-chat;
-      # ПРОВЕРИТЬ при каждом `flake update`: `nix search nixpkgs deepseek-harness`.
-      # Как только пакет появится в канале (стабильном или unstable), `or`
-      # сам начнёт использовать его — отдельная правка не нужна.
-      deepseekHarness =
-        pkgs.unstable.deepseek-harness or (pkgs.callPackage ./_agents-tools-dsh-package.nix { });
+      # Версия — из закреплённого unstable (ПРОВЕРИТЬ политику при каждом обновлении:
+      # `dsh --dump-config`, список записей в _agents-tools-dsh-policy.nix).
+      deepseekHarness = pkgs.unstable.deepseek-harness;
 
-      # Патчи профилей dsh (встроенный поиск выключен, R9.14) — в хранилище.
-      dshProfile = pkgs.callPackage ./_agents-tools-dsh-profile.nix { inherit dshRole; };
+      # Политика Nix для dsh (поиск, телеметрия, менеджер плагинов) — в хранилище.
+      dshPolicy = pkgs.callPackage ./_agents-tools-dsh-policy.nix { };
 
       agentLauncher = pkgs.callPackage ./_agents-tools-launcher.nix {
         inherit
@@ -105,14 +102,14 @@ _: {
           deepseekHarness
           aiderChat
           aiderRole
-          dshProfile
+          dshPolicy
           ;
       };
     in
     {
       assertions = [
         {
-          assertion = aiderRole != null && dshRole != null;
+          assertion = aiderRole != null;
           message =
             "agents-tools: у хоста нет ни одной роли, пригодной для агентов. "
             + "Объявите хотя бы `cost-autonomous` в my.ai.gateway.cloudRoles "
