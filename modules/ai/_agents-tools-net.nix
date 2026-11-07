@@ -27,8 +27,16 @@ pkgs.writeShellApplication {
   text = ''
     bridge_root=/run/agents-bridge
 
+    # Журнал socat — в файл, не в терминал: при выходе каждый форк-потомок моста
+    # пишет «W exiting on signal 15» и портит вывод TUI агента. Журнал показываем
+    # только если мост не поднялся.
+    log=/dev/null
+
     fail() {
       echo "agents-net: $*" >&2
+      if [ "$log" != /dev/null ] && [ -s "$log" ]; then
+        tail -n 5 -- "$log" >&2
+      fi
       exit 1
     }
 
@@ -110,6 +118,7 @@ pkgs.writeShellApplication {
         parse "$@"
         dir=$(mktemp -d "''${XDG_RUNTIME_DIR:-/tmp}/agents-bridge.XXXXXX")
         mkdir -m 0700 "$dir/fwd" "$dir/rev"
+        log=$dir/socat.log
         pids=()
         # shellcheck disable=SC2329  # вызывается через trap
         cleanup() {
@@ -124,12 +133,12 @@ pkgs.writeShellApplication {
         for i in "''${!kinds[@]}"; do
           case "''${kinds[$i]}" in
             fwd)
-              setsid socat "UNIX-LISTEN:$dir/fwd/''${names[$i]}.sock,fork,mode=0600" "TCP:127.0.0.1:''${ports[$i]}" &
+              setsid socat -lf "$log" "UNIX-LISTEN:$dir/fwd/''${names[$i]}.sock,fork,mode=0600" "TCP:127.0.0.1:''${ports[$i]}" &
               pids+=("$!")
               wait_bridge "$!" test -S "$dir/fwd/''${names[$i]}.sock" || fail "мост ''${names[$i]} не поднялся"
               ;;
             rev)
-              setsid socat "TCP-LISTEN:''${ports[$i]},bind=127.0.0.1,reuseaddr,fork" "UNIX-CONNECT:$dir/rev/''${names[$i]}.sock" &
+              setsid socat -lf "$log" "TCP-LISTEN:''${ports[$i]},bind=127.0.0.1,reuseaddr,fork" "UNIX-CONNECT:$dir/rev/''${names[$i]}.sock" &
               pids+=("$!")
               wait_bridge "$!" listening "''${ports[$i]}" || fail "порт ''${ports[$i]} хоста занят или мост ''${names[$i]} не поднялся"
               ;;
@@ -143,14 +152,15 @@ pkgs.writeShellApplication {
 
       inside)
         parse "$@"
+        if : >> "$bridge_root/inside.log" 2>/dev/null; then log=$bridge_root/inside.log; fi
         for i in "''${!kinds[@]}"; do
           case "''${kinds[$i]}" in
             fwd)
-              socat "TCP-LISTEN:''${ports[$i]},bind=127.0.0.1,reuseaddr,fork" "UNIX-CONNECT:$bridge_root/fwd/''${names[$i]}.sock" &
+              socat -lf "$log" "TCP-LISTEN:''${ports[$i]},bind=127.0.0.1,reuseaddr,fork" "UNIX-CONNECT:$bridge_root/fwd/''${names[$i]}.sock" &
               wait_bridge "$!" listening "''${ports[$i]}" || fail "внутренний мост ''${names[$i]} не поднялся"
               ;;
             rev)
-              socat "UNIX-LISTEN:$bridge_root/rev/''${names[$i]}.sock,fork,mode=0600" "TCP:127.0.0.1:''${ports[$i]}" &
+              socat -lf "$log" "UNIX-LISTEN:$bridge_root/rev/''${names[$i]}.sock,fork,mode=0600" "TCP:127.0.0.1:''${ports[$i]}" &
               wait_bridge "$!" test -S "$bridge_root/rev/''${names[$i]}.sock" || fail "внутренний мост ''${names[$i]} не поднялся"
               ;;
           esac
