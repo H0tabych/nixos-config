@@ -69,7 +69,10 @@ in
 pkgs.runCommand "tunnel-config"
   {
     # Тот же пакет, что у tunnel-xray: проверять надо ядром, которое будет работать.
-    nativeBuildInputs = [ m1Host.pkgs.unstable.xray ];
+    nativeBuildInputs = [
+      m1Host.pkgs.unstable.xray
+      pkgs.jq
+    ];
   }
   ''
     echo "VPN-OPS-1: конфиг с фиктивными секретами корректного формата должен пройти проверку ядром"
@@ -100,6 +103,17 @@ pkgs.runCommand "tunnel-config"
       echo "ожидался отказ ядра на неверном shortId" >&2
       exit 1
     fi
+
+    for conf in ${validConfig} ${validM2Config}; do
+      echo "AI-SBX-5: HTTP-вход не открывает частные адреса и localhost, правила раньше direct ($conf)"
+      jq -e '
+        .routing.rules as $r
+        | ($r | map(.inboundTag == ["http-in"] and .ip == ["geoip:private"] and .outboundTag == "block") | index(true)) as $ip
+        | ($r | map(.inboundTag == ["http-in"] and .domain == ["domain:localhost"] and .outboundTag == "block") | index(true)) as $dom
+        | ($r | map(.outboundTag == "direct" and ((.ip // []) | index("geoip:private") != null)) | index(true)) as $first_private
+        | $first_private != null and $ip != null and $dom != null and $ip < $first_private and $dom < $first_private
+      ' "$conf" >/dev/null
+    done
 
     touch $out
   ''

@@ -159,6 +159,23 @@ in
         outboundTag = "block";
       }
     ]
+    # AI-SBX-5 (R9.17): HTTP-вход — единственный выход агентов в `online`. Частные
+    # адреса и `localhost` через него не открываются: иначе агент попросил бы прокси
+    # соединиться с loopback хоста (инференс, SSH, служба торрентов) и обошёл бы
+    # сетевое пространство имён песочницы. Правила идут раньше `direct` ниже; в M2
+    # сам вход не используется ничем, кроме мостов агентов.
+    ++ [
+      {
+        inboundTag = [ "http-in" ];
+        ip = [ "geoip:private" ];
+        outboundTag = "block";
+      }
+      {
+        inboundTag = [ "http-in" ];
+        domain = [ "domain:localhost" ];
+        outboundTag = "block";
+      }
+    ]
     ++ lib.optional (block != [ ]) {
       domain = block;
       outboundTag = "block";

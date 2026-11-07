@@ -1,41 +1,38 @@
 # Приватная часть: agents-tools · Владелец: modules/ai/agents-tools.nix (STR-6)
-# Лаунчер-песочница (AI_SUBSYSTEM.md §3.4, «Лаунчер-песочница»): единая точка
-# истины для bubblewrap-изоляции агентов — используется и фичей
-# (agents-tools.nix), и тестом (tests/agent-sandbox.nix), чтобы проверять
-# ровно тот код, который реально запускается (AI-SBX-11).
+# Лаунчер-песочница (AI_SUBSYSTEM.md §3.4): единая точка истины для
+# bubblewrap-изоляции агентов — её используют и фича (agents-tools.nix), и тесты
+# (tests/agent-sandbox.nix, agent-network.nix): проверяется тот код, что реально
+# запускается (AI-SBX-11).
 #
-# Режимы `online`/`offline` (AI-SBX-5) принимаются аргументом, но сетевой
-# изоляции здесь нет — общий netns с хостом; пространство имён и мосты — R9.17.
-#
-# AI-SBX-1 (ADR-44, R9.14): корень файловой системы СОБИРАЕТСЯ из
-# разрешённого, а не берётся с хоста с масками (`--ro-bind / /` оставлял
-# видимыми сокеты сессии, системную шину, /run/secrets* и любой новый сокет
-# хоста — D17). Только чтение: хранилище пакетов, сокет демона сборки, /etc,
-# /run/current-system, /bin/sh, /usr/bin/env, stub-resolv.conf (на него ведёт
-# /etc/resolv.conf: без него DNS даёт EAI_AGAIN). Свои: /dev, /proc, /tmp, /run
-# (пустой, внутри только свой XDG_RUNTIME_DIR). Прочего нет внутри — ни
+# AI-SBX-1 (R9.14): корень СОБИРАЕТСЯ из разрешённого, а не берётся с хоста с
+# масками (D17). Только чтение: хранилище пакетов, /etc, /run/current-system,
+# /bin/sh, /usr/bin/env, stub-resolv.conf, сокет демона сборки (только `online`).
+# Свои: /dev, /proc, /tmp, /run (внутри только свой XDG_RUNTIME_DIR); ни
 # /run/docker.sock (AI-SBX-10), ни `/run/user/<uid>` хоста.
-# AI-SBX-2: домашний каталог скрыт `--tmpfs`; из ~/.config возвращаются только
-# каталоги белого списка (машинный слой, ai, git, direnv + каталоги роли из
-# `--config`), каждый отдельным ro-bind (симлинк в dotfiles разрешает ядро).
-# Запись — только `project-dir` и `state-dir`, оба передаются вызывающим явно.
-# У роли свои XDG_CACHE/STATE/DATA_HOME внутри state-dir.
-# AI-SBX-7 (ADR-44, R9.15): работа на месте. Проект — на запись, метаданные git
-# и `.envrc` — только чтение, общий git-каталог привязан к себе (список даёт
-# `agents-git binds`). `.direnv` у роли свой (в state-dir). Отчёт — `agents-git`.
-# AI-SBX-3: окружение пересобирается с нуля (`env -i`); ключ доступа к шлюзу
-# попадает значением через `--pass-env` (из окружения самого процесса, не из
-# argv — не виден в `ps`), путь к файлу с ключом не пробрасывается.
-{ pkgs, gitTool }:
+# AI-SBX-2: $HOME скрыт `--tmpfs`; из ~/.config — только белый список (machine.d,
+# ai, git, direnv + `--config`), ro. Запись — `project-dir` и `state-dir`; у роли
+# свои XDG_CACHE/STATE/DATA_HOME внутри state-dir.
+# AI-SBX-3: окружение с нуля (`env -i`); ключ шлюза — значением через `--pass-env`.
+# AI-SBX-5 (R9.17): свой пустой netns; наружу — только мосты `--bridge`
+# (`agents-net`). `online`: внутри прокси на мост `proxy`; `offline`: ни прокси,
+# ни сокета демона сборки.
+# AI-SBX-7 (R9.15): работа на месте; метаданные git и `.envrc` ro, список —
+# `agents-git binds`; `.direnv` у роли свой.
+{
+  pkgs,
+  gitTool,
+  netTool,
+}:
 pkgs.writeShellApplication {
   name = "agents-sandbox-exec";
   runtimeInputs = [
     pkgs.bubblewrap
     gitTool
+    netTool
   ];
   text = ''
     usage() {
-      echo "usage: agents-sandbox-exec <project-dir> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--cwd PATH] [--home-rw] -- <cmd...>" >&2
+      echo "usage: agents-sandbox-exec <project-dir> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--cwd PATH] [--home-rw] [--bridge fwd|rev:NAME:PORT]... -- <cmd...>" >&2
       exit 1
     }
 
@@ -50,25 +47,23 @@ pkgs.writeShellApplication {
       *) usage ;;
     esac
 
-    # --env — явная доплата к окружению от вызывающего (agent-launcher, тот
-    # же владелец Nix — AI-SBX-11): значения не из проекта (AI-SBX-9).
-    # --pass-env — то же, но значение берётся из окружения самого процесса
-    # (ключ доступа к шлюзу: в argv ему не место).
-    # --config — каталог роли в ~/.config (белый список AI-SBX-2), только чтение.
-    # --app-path — собственный каталог (или файл) приложения на запись
-    # (§2.5, класс D: токены, которые приложение само сохраняет при входе).
-    # --cwd — рабочий каталог внутри project-dir (по умолчанию он сам).
-    # --home-rw — ОСЛАБЛЕННЫЙ режим (AI-SBX-12, решение владельца по роли):
-    # $HOME открыт на запись целиком; корень из разрешённого, сокеты сессии и
-    # секреты шлюза остаются недоступны, запись вне $HOME запрещена. Теряются
-    # ключи SSH/GPG, ключ расшифровки секретов, репозиторий конфигурации и
-    # прочее содержимое $HOME.
+    # --env — доплата к окружению от вызывающего (значения не из проекта, AI-SBX-9);
+    # --pass-env — то же, но значение из окружения процесса (ключ шлюза: не в argv);
+    # --config — каталог роли в ~/.config (белый список), ro; --app-path — свой
+    # каталог приложения на запись (§2.5, класс D); --cwd — рабочий каталог внутри
+    # project-dir; --bridge — мост в netns (AI-SBX-5, спецификация как у `agents-net`,
+    # каталог сокетов — $AGENTS_NET_DIR от `agents-net host`). --home-rw — ОСЛАБЛЕННЫЙ режим (AI-SBX-12): $HOME на запись
+    # целиком; корень из разрешённого и сокеты сессии/секреты шлюза недоступны
+    # по-прежнему, теряются ключи SSH/GPG, ключ расшифровки, репозиторий
+    # конфигурации и прочее содержимое $HOME.
     extra_env=()
     pass_env=()
     config_dirs=()
     app_paths=()
     cwd_arg=""
     home_rw=0
+    bridge_dir="''${AGENTS_NET_DIR:-}"
+    bridges=()
     while :; do
       case "''${1:-}" in
         --env)
@@ -98,24 +93,26 @@ pkgs.writeShellApplication {
           home_rw=1
           shift
           ;;
+        --bridge)
+          bridges+=("$2")
+          shift 2
+          ;;
         *) break ;;
       esac
     done
     [ "''${1:-}" = "--" ] || usage
     shift
-
+    # Мосты без каталога сокетов — ошибка вызывающего.
+    { [ -n "$bridge_dir" ] || [ "''${#bridges[@]}" -eq 0 ]; } || usage
     real_home="$HOME"
     uid=$(id -u)
-    # project-dir не создаём: несуществующий путь — ошибка вызывающего, а не
-    # повод тихо его завести (AI-SBX-6). Каталог состояния роли и её XDG-каталоги
-    # создаём по требованию.
+    # project-dir не создаём: несуществующий путь — ошибка вызывающего (AI-SBX-6).
     mkdir -p "$state_dir/cache" "$state_dir/state" "$state_dir/data"
 
-    # AI-SBX-2, fail-closed (AI-SBX-6): `--bind project_dir` идёт ПОСЛЕ
-    # `--tmpfs real_home`, поэтому домашний каталог (или его предок) в роли
-    # project_dir вернул бы агенту настоящий $HOME на запись. ПРОВЕРЕНО: без
-    # проверки `agent-launcher` из ~ давал прочитать ~/.ssh/. Корень `/`
-    # запрещён всегда; в --home-rw $HOME открыт намеренно.
+    # AI-SBX-2, fail-closed: `--bind project_dir` идёт ПОСЛЕ `--tmpfs real_home`,
+    # поэтому $HOME (или его предок) в роли project_dir вернул бы агенту настоящий
+    # $HOME на запись (ПРОВЕРЕНО: читался ~/.ssh/). `/` запрещён всегда; в
+    # --home-rw $HOME открыт намеренно.
     project_real=$(realpath -- "$project_dir")
     home_real=$(realpath -- "$real_home")
     if [ "$project_real" = "/" ] || { [ "$home_rw" -eq 0 ] && {
@@ -141,10 +138,8 @@ pkgs.writeShellApplication {
       esac
     fi
 
-    # HOME остаётся НАСТОЯЩИМ путём (внутри — пустой tmpfs), иначе `~/...`
-    # приложения не совпал бы с путями его каталогов (--app-path; ПРОВЕРЕНО
-    # живьём). XDG_* — свои у роли (ADR-44); XDG_CONFIG_HOME не задаём:
-    # конфиги — белый список в настоящем ~/.config.
+    # HOME — НАСТОЯЩИЙ путь (внутри пустой tmpfs), иначе `~/...` не совпал бы с
+    # --app-path (ПРОВЕРЕНО). XDG_* — свои у роли; XDG_CONFIG_HOME не задаём.
     env_args=(
       "HOME=$real_home"
       "PATH=$PATH"
@@ -153,17 +148,27 @@ pkgs.writeShellApplication {
       "XDG_STATE_HOME=$state_dir/state"
       "XDG_DATA_HOME=$state_dir/data"
       "XDG_RUNTIME_DIR=/run/user/$uid"
+      # bwrap создаёт /nix/var/nix/db пустым и записываемым, `auto` выбрал бы
+      # локальное хранилище и упал на ro /nix/store (ПРОВЕРЕНО на машине); в
+      # offline демона нет — nix сразу отказывает, без попыток сети.
+      "NIX_REMOTE=daemon"
     )
     [ -n "''${LANG:-}" ] && env_args+=("LANG=$LANG")
 
-    # NET-10/L-7: переменные прокси определяются в ОДНОМ месте (сессия, M1) —
-    # здесь только пробрасываются; без них `env -i` уводил агента мимо туннеля
-    # (ПРОВЕРЕНО: 403 от api.anthropic.com). Значения — адреса loopback.
-    for v in http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY no_proxy NO_PROXY; do
-      if [ -n "''${!v:-}" ]; then
-        env_args+=("$v=''${!v}")
-      fi
+    # Выход в сеть только через мост `proxy` (HTTP-вход туннеля, NET-7): адрес
+    # внутри тот же, что у хоста, переменные хоста не пробрасываются (в M2 их нет).
+    proxy_port=""
+    for b in ''${bridges[@]+"''${bridges[@]}"}; do
+      [[ "$b" =~ ^fwd:proxy:([0-9]+)$ ]] && proxy_port="''${BASH_REMATCH[1]}"
     done
+    if [ -n "$proxy_port" ]; then
+      for v in http_proxy HTTP_PROXY https_proxy HTTPS_PROXY; do
+        env_args+=("$v=http://127.0.0.1:$proxy_port")
+      done
+      for v in no_proxy NO_PROXY; do
+        env_args+=("$v=localhost,127.0.0.1,::1")
+      done
+    fi
     [ -n "''${AI_GATEWAY_URL:-}" ] && env_args+=("AI_GATEWAY_URL=$AI_GATEWAY_URL")
     for v in ''${pass_env[@]+"''${pass_env[@]}"}; do
       [ -n "''${!v:-}" ] && env_args+=("$v=''${!v}")
@@ -172,16 +177,15 @@ pkgs.writeShellApplication {
       env_args+=("''${extra_env[@]}")
     fi
 
-    # Голый корень bwrap — tmpfs; всё ниже — перечень разрешённого (AI-SBX-1).
-    # /bin/sh и /usr/bin/env — симлинками на их цели в хранилище.
+    # Голый корень bwrap — tmpfs; ниже — перечень разрешённого (AI-SBX-1).
     bwrap_args=(
       --unshare-pid
       --unshare-ipc
       --unshare-uts
       --unshare-cgroup
+      --unshare-net
       --die-with-parent
       --ro-bind /nix/store /nix/store
-      --ro-bind-try /nix/var/nix/daemon-socket /nix/var/nix/daemon-socket
       --ro-bind /etc /etc
       --dev /dev
       --proc /proc
@@ -192,14 +196,19 @@ pkgs.writeShellApplication {
       --ro-bind-try /run/systemd/resolve/stub-resolv.conf /run/systemd/resolve/stub-resolv.conf
       --perms 0700 --dir "/run/user/$uid"
     )
+    # Сокет демона сборки — канал выхода (загрузки с фиксированным хэшем), в offline скрыт.
+    [ "$mode" = online ] && bwrap_args+=(--ro-bind-try /nix/var/nix/daemon-socket /nix/var/nix/daemon-socket)
+    [ -z "$bridge_dir" ] || bwrap_args+=(
+      --ro-bind "$bridge_dir/fwd" /run/agents-bridge/fwd
+      --bind "$bridge_dir/rev" /run/agents-bridge/rev
+    )
     for f in /bin/sh /usr/bin/env; do
       if [ -e "$f" ]; then
         bwrap_args+=(--symlink "$(readlink -f "$f")" "$f")
       fi
     done
 
-    # Каталог direnv с базой разрешений (AI-SBX-4): direnv ищет её в
-    # $XDG_DATA_HOME/direnv, а он теперь свой — настоящую базу кладём туда, ro.
+    # База разрешений direnv (AI-SBX-4): ищется в $XDG_DATA_HOME/direnv — кладём ro.
     direnv_data="''${XDG_DATA_HOME:-$real_home/.local/share}/direnv"
 
     if [ "$home_rw" -eq 1 ]; then
@@ -222,8 +231,8 @@ pkgs.writeShellApplication {
       --chdir "$cwd_real"
     )
 
-    # AI-SBX-7: список монтирований защиты git даёт `agents-git binds`; через
-    # файл (не подстановку процесса), чтобы отказ останавливал запуск (set -e).
+    # AI-SBX-7: монтирования защиты git — `agents-git binds`, через файл, чтобы
+    # отказ останавливал запуск (set -e).
     git_binds_file=$(mktemp)
     agents-git binds "$project_dir" "$project_real" > "$git_binds_file"
     mapfile -d "" -t git_bind_args < "$git_binds_file"
@@ -232,10 +241,10 @@ pkgs.writeShellApplication {
       bwrap_args+=(--bind-try "$p" "$p")
     done
 
-    # AI-SBX-6 (fail-closed): любая ошибка bwrap (в том числе недоступность
-    # пользовательских пространств имён, AI-SBX-11) останавливает скрипт
-    # (`set -e`) до исполнения целевой команды.
+    # AI-SBX-6 (fail-closed): ошибка bwrap (AI-SBX-11) останавливает скрипт
+    # (`set -e`) до исполнения команды. Мосты внутри netns — `agents-net inside`.
     rm -f "$git_binds_file"
+    [ "''${#bridges[@]}" -eq 0 ] || set -- agents-net inside "''${bridges[@]}" -- "$@"
     exec env -i "''${env_args[@]}" bwrap "''${bwrap_args[@]}" -- "$@"
   '';
 }

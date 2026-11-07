@@ -27,7 +27,8 @@
 }:
 let
   gitTool = pkgs.callPackage ../modules/ai/_agents-tools-git.nix { };
-  sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix { inherit gitTool; };
+  netTool = pkgs.callPackage ../modules/ai/_agents-tools-net.nix { };
+  sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix { inherit gitTool netTool; };
   dshProfile = pkgs.callPackage ../modules/ai/_agents-tools-dsh-profile.nix {
     dshRole = "cost-autonomous";
   };
@@ -203,6 +204,9 @@ pkgs.testers.runNixOSTest {
     assert sandbox_out("ls /run/user").split() == ["2000"], "в /run/user только каталог самой роли"
     # Сокет демона сборки — единственное, что нужно из хоста для nix внутри.
     sandbox_out("test -S /nix/var/nix/daemon-socket/socket")
+    # ...и nix внутри действительно идёт через него, а не в локальное хранилище
+    # (регрессия: «opening lock file ... Read-only file system»).
+    assert "Store URL: daemon" in sandbox_out("nix --extra-experimental-features nix-command store info 2>&1"), "nix в песочнице должен идти через демон"
 
     # DNS (регрессия R9.14: /run пустой — resolv.conf-симлинк висел в пустоту).
     assert "nameserver" in machine.succeed(outside("cat /etc/resolv.conf")), "контроль: resolv.conf снаружи"
@@ -218,6 +222,7 @@ pkgs.testers.runNixOSTest {
         f"XDG_DATA_HOME={STATE}/data",
         "XDG_RUNTIME_DIR=/run/user/2000",
         "HOME=/home/agent",
+        "NIX_REMOTE=daemon",
     ]:
         assert want in env_out.split("\n"), f"AI-SBX-2: ожидалось {want}"
 
@@ -295,12 +300,20 @@ pkgs.testers.runNixOSTest {
         assert status != 0, f"AI-SBX-2: project-dir = {label} ({pdir}) должен быть запрещён"
         machine.fail(f"test -e {STATE}/breach")
 
-    # NET-10/L-7: переменные прокси пробрасываются.
+    # AI-SBX-5 (R9.17): переменные прокси хоста не пробрасываются; без моста
+    # `proxy` их нет вовсе, с мостом — адрес моста внутри песочницы.
     out = sandbox_out(
         "sh -c 'echo p=$http_proxy n=$no_proxy'",
         env="http_proxy=http://127.0.0.1:1 no_proxy=localhost",
     )
-    assert "p=http://127.0.0.1:1" in out and "n=localhost" in out, f"NET-10: прокси не проброшены: {out!r}"
+    assert out.strip() == "p= n=", f"AI-SBX-5: прокси хоста не должны попадать внутрь: {out!r}"
+    machine.succeed("install -d -o agent -g agent /home/agent/bridge/fwd /home/agent/bridge/rev")
+    out = sandbox_out(
+        "sh -c 'echo p=$http_proxy n=$no_proxy'",
+        "--bridge fwd:proxy:10809",
+        env="AGENTS_NET_DIR=/home/agent/bridge",
+    )
+    assert "p=http://127.0.0.1:10809" in out and "n=localhost,127.0.0.1,::1" in out, f"AI-SBX-5: {out!r}"
 
     # §2.5 класс D: --app-path отдаёт приложению ЕГО каталог на запись.
     fixture_file("/home/agent/.appstate/sessions", "app-marker", "0644")

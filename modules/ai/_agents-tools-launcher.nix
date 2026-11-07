@@ -8,6 +8,9 @@
   pkgs,
   lib,
   sandboxExec,
+  netTool,
+  tunnelHttpPort,
+  dshWebPortBase,
   gitTool,
   claudeCode,
   deepseekHarness,
@@ -20,24 +23,39 @@ pkgs.writeShellApplication {
   runtimeInputs = [
     pkgs.direnv
     sandboxExec
+    netTool
     gitTool
     pkgs.git
   ];
   text = ''
     usage() {
-      echo "usage: agent-launcher <claude|dsh|aider> [--offline] [-- args...]" >&2
+      echo "usage: agent-launcher <claude|dsh|aider> [--online|--offline] [-- args...]" >&2
       exit 1
     }
     [ "$#" -ge 1 ] || usage
     role=$1
     shift
 
-    mode=online
-    if [ "''${1:-}" = "--offline" ]; then
-      mode=offline
-      shift
-    fi
+    # Режим (AI-SBX-5, AI-SEC-6): без флага — по корням рабочих деревьев и маркеру
+    # `.ai/offline` (agents-net mode); облако в рабочем дереве — только флагом
+    # `--online` на этот запуск (проект включить его не может, AI-SEC-5).
+    mode=""
+    case "''${1:-}" in
+      --online | --offline)
+        mode=''${1#--}
+        shift
+        ;;
+    esac
     [ "''${1:-}" = "--" ] && shift
+    # AI-SBX-7 (ADR-44): работа на месте. Каталог проекта — корень git-дерева
+    # (иначе текущий), на запись; метаданные git в песочнице ro (agents-sandbox-exec).
+    project_dir=$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")
+    [ -n "$mode" ] || mode=$(agents-net mode "$project_dir" "$HOME/.config/ai/work-roots")
+    echo "agent-launcher: режим $mode" >&2
+    if [ "$role" = claude ] && [ "$mode" = offline ]; then
+      echo "agent-launcher: claude работает по подписке и в offline не запускается (AI-SBX-5); для облака — флаг --online" >&2
+      exit 1
+    fi
 
     # Адрес шлюза и путь к ключу — из машинного слоя (DOT-5, AI-CMP-4), а не
     # из того, что досталось интерактивной сессии: файл пишет фича
@@ -70,10 +88,17 @@ pkgs.writeShellApplication {
     # аргументом командной строки. $HOME здесь — настоящий домашний каталог:
     # agent-launcher выполняется до входа в песочницу.
     state_dir="$HOME/.local/state/agents/$role"
-    # AI-SBX-7 (ADR-44): работа на месте. Каталог проекта — корень git-дерева
-    # (иначе текущий каталог), на запись; метаданные git в песочнице только на
-    # чтение (agents-sandbox-exec). Рабочий каталог остаётся прежним (--cwd).
-    project_dir=$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")
+    # Мосты в netns (agents-net): шлюз — всем, кроме claude (подписка, AI-GW-11);
+    # HTTP-вход туннеля — только в online. Порт шлюза — из машинного слоя.
+    net_specs=()
+    if [ "$role" != claude ] && [ -n "''${AI_GATEWAY_URL:-}" ]; then
+      gw_port=''${AI_GATEWAY_URL##*:}
+      net_specs+=("fwd:gateway:''${gw_port%%/*}")
+    fi
+    tunnel_http_port="${if tunnelHttpPort == null then "" else toString tunnelHttpPort}"
+    if [ "$mode" = online ] && [ -n "$tunnel_http_port" ]; then
+      net_specs+=("fwd:proxy:$tunnel_http_port")
+    fi
 
     extra_env=()
     extra_bin_args=()
@@ -82,20 +107,12 @@ pkgs.writeShellApplication {
     case "$role" in
       claude)
         bin=${lib.getExe claudeCode}
-        # CLAUDE_CONFIG_DIR НЕ подменяем. У claude-code один каталог на всё:
-        # настройки, список MCP-серверов, плагины, скиллы, сессии по проектам
-        # и собственная авторизация — то есть ровно «каталог приложения»
-        # (AI_SUBSYSTEM.md §2.5, класс D). Подмена каталога на свежий
-        # означала бы, что агент не видит ни своих MCP, ни прошлых сессий —
-        # ПРОВЕРЕНО живьём: именно так и получилось, пока здесь стоял
-        # CLAUDE_CONFIG_DIR в state_dir (данные при этом не терялись, они
-        # остаются в ~/.claude).
-        # Решение пользователя (2026-10-29): тяжёлой роли нужен доступ ко
-        # всему домашнему каталогу на запись — соседние репозитории, заметки,
-        # кросс-проектные правки. Поэтому именно она идёт в ослабленном
-        # режиме (AI-SBX-12); dsh и aider остаются в полной изоляции.
-        # Отдельные --app-path для ~/.claude не нужны: домашний каталог
-        # открыт целиком, сессии и MCP и так на месте.
+        # CLAUDE_CONFIG_DIR НЕ подменяем: каталог ~/.claude — «каталог приложения»
+        # (AI_SUBSYSTEM.md §2.5, класс D: настройки, MCP, плагины, сессии, вход);
+        # со свежим каталогом агент не видит своих MCP и сессий (ПРОВЕРЕНО).
+        # Решение пользователя (2026-10-29): тяжёлой роли — доступ ко всему $HOME на
+        # запись (кросс-проектные правки), то есть ослабленный режим (AI-SBX-12);
+        # dsh и aider — в полной изоляции. --app-path для ~/.claude не нужен.
         sandbox_opts=(--home-rw)
         # Поведенческие флаги задаются здесь, а не в settings.json того
         # каталога: settings.json принадлежит самому приложению и
@@ -115,56 +132,34 @@ pkgs.writeShellApplication {
         if [ -r "$HOME/.config/ai/generated/claude.mcp.json" ]; then
           extra_bin_args=(--mcp-config "$HOME/.config/ai/generated/claude.mcp.json")
         fi
-        # Через шлюз эту роль НЕ направляем (AI-GW-11: режим входа по подписке
-        # шлюз не обслуживает). ПРОВЕРЕНО живьём: ANTHROPIC_BASE_URL +
-        # ANTHROPIC_AUTH_TOKEN перебивают вход claude.ai («connectors are
-        # disabled because ANTHROPIC_API_KEY or another auth source is set»)
-        # и уводят запросы на облачную роль шлюза — то есть на модель слабее
-        # той, что даёт подписка. Поэтому роль ходит со своей авторизацией из
-        # ~/.claude, а туннель ей обеспечивают переменные прокси (NET-10),
-        # которые песочница пробрасывает. Если понадобится обратное
-        # (лимиты и журналы шлюза вместо подписки) — вернуть здесь
-        # ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN и ANTHROPIC_MODEL=роль.
+        # Через шлюз эту роль НЕ направляем (AI-GW-11: вход по подписке шлюз не
+        # обслуживает). ПРОВЕРЕНО: ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN
+        # перебивают вход claude.ai и уводят запросы на более слабую роль шлюза.
+        # Роль ходит со своей авторизацией из ~/.claude, выход — через мост
+        # `proxy` в online (переменные прокси задаёт песочница, AI-SBX-5).
         ;;
       dsh)
         bin=${lib.getExe deepseekHarness}
-        # DSH_HOME — каталог СОСТОЯНИЯ, не конфига: dsh сам создаёт в нём
-        # профиль из поставляемого шаблона и ставит туда бандлы (pnpm), то
-        # есть каталог обязан быть записываемым. Поэтому он в state_dir, а
-        # не в ~/.config (который песочница монтирует только на чтение) —
-        # ПРОВЕРЕНО: с ~/.config dsh падает на создании профиля.
+        # DSH_HOME — каталог СОСТОЯНИЯ: dsh создаёт в нём профиль и ставит бандлы,
+        # поэтому он в state_dir, а не в ~/.config (ro) — ПРОВЕРЕНО.
         extra_env=(--env "DSH_HOME=$state_dir/dsh-home")
-        # dsh говорит с провайдером по протоколу Anthropic и берёт ключ из
-        # DEEPSEEK_API_KEY. Направляем его в наш шлюз: облачная роль, лимиты
-        # и журналы остаются на шлюзе (AI-GW-2/AI-GW-6), отдельный ключ
-        # DeepSeek не нужен. Без ключа dsh падает с «MISSING_CREDENTIAL:
-        # llm-deepseek» — ПРОВЕРЕНО живьём.
-        #
-        # Адрес и модель задаются ПАТЧЕМ ПРОФИЛЯ, а не переменными: адрес
-        # DEEPSEEK_BASE_URL dsh читает, но имя модели берёт только из
-        # конфигурации плагина `agent-default-model` (ПРОВЕРЕНО: с одним
-        # DEEPSEEK_BASE_URL запрос доходит до шлюза, но тот отвечает «could
-        # not auto resolve a provider» — dsh присылает своё `deepseek-flash`).
-        # Патч кладётся в профиль внутри DSH_HOME (состояние, не dotfiles) при
-        # каждом запуске: его содержимое выводится из политики хоста — имя
-        # роли от Nix и адрес из машинного слоя, констант здесь нет
-        # (AI-ROLE-2, DOT-1). `provider` остаётся штатным `deepseek-official`:
-        # это внутреннее имя маршрута dsh, а не выбор провайдера — реальный
-        # провайдер за ролью решает шлюз.
+        # dsh берёт ключ из DEEPSEEK_API_KEY — туда ключ доступа к шлюзу: роль,
+        # лимиты и журналы остаются на шлюзе (AI-GW-2/AI-GW-6). Без ключа —
+        # «MISSING_CREDENTIAL: llm-deepseek» (ПРОВЕРЕНО).
+        # Адрес и модель — ПАТЧЕМ ПРОФИЛЯ: имя модели dsh берёт только из плагина
+        # `agent-default-model` (ПРОВЕРЕНО: иначе шлюз отвечает «could not auto
+        # resolve a provider»). Патч пишется в DSH_HOME при каждом запуске; имя
+        # роли — от Nix, адрес — из машинного слоя (AI-ROLE-2, DOT-1). `provider:
+        # deepseek-official` — внутреннее имя маршрута dsh, провайдера решает шлюз.
         if [ -n "''${AI_GATEWAY_URL:-}" ] && [ -n "$gw_key" ]; then
           export DEEPSEEK_API_KEY="$gw_key"
           sandbox_opts+=(--pass-env DEEPSEEK_API_KEY)
-          # Патч пишется в оба поставляемых профиля, которые использует
-          # лаунчер (web — полноценный агент, headless — одноразовая задача):
-          # какой из них запустится, зависит от аргументов ниже. Каталог
-          # создаём сами — на первом запуске его ещё нет, а dsh дописывает
-          # остальное содержимое профиля рядом, не затирая патч (ПРОВЕРЕНО
-          # на чистом DSH_HOME).
+          # Патч — в оба профиля лаунчера (web, headless); каталог создаём сами,
+          # dsh дописывает остальное рядом, не затирая патч (ПРОВЕРЕНО).
           for dsh_prof in web headless; do
             dsh_profile="$state_dir/dsh-home/profiles/$dsh_prof"
             mkdir -p "$dsh_profile"
-            # Содержимое — из хранилища (патчи профилей фичи, там же
-            # почему выключен встроенный поиск); подставляется только адрес.
+            # Содержимое — из хранилища; подставляется только адрес.
             case "$dsh_prof" in
               web) dsh_src=${dshProfile.web} ;;
               *) dsh_src=${dshProfile.headless} ;;
@@ -180,24 +175,22 @@ pkgs.writeShellApplication {
           --env "all_proxy="
           --env "ALL_PROXY="
         )
-        # --profile обязателен. Поставляемые шаблоны (PROFILE_TEMPLATES в
-        # dsh-app-boot): acp, web, headless, sdk, sdk-minimal. Терминального
-        # интерфейса среди них НЕТ (`tui` из примеров --help — имя
-        # пользовательского профиля, шаблона с таким именем нет; бандл
-        # `experimental-terminal` — про живучесть shell-процессов, не UI).
-        # Полноценный интерактивный агент у dsh — это профиль `web`: он
-        # поднимает локальный сервер на loopback и печатает URL с токеном
-        # (сессии, субагенты, план-режим — всё там). Поэтому:
+        # --profile обязателен; шаблоны: acp, web, headless, sdk, sdk-minimal.
+        # Терминального интерфейса нет; полноценный агент — профиль `web` (сервер
+        # на loopback, URL с токеном). Поэтому:
         #   без аргументов            → web, полноценный агент;
         #   с текстом задачи          → headless, «выполнить и выйти»;
         #   с флагами (--*)           → как есть, профиль выбирает пользователь.
-        # --no-open: браузер запускает человек снаружи, а не песочница —
-        # внутри неё у браузера нет ни профиля, ни доступа к сессии
-        # рабочего стола (AI-SBX-2). Порт на loopback доступен хосту, потому
-        # что сетевое пространство имён общее (AI-SBX-5, ПРОВЕРИТЬ).
+        # --no-open: браузер запускает человек снаружи, не песочница (AI-SBX-2).
+        # --port фиксирован (на пользователя): веб-интерфейс внутри netns виден
+        # хосту через обратный мост rev:dsh-web (AI-SBX-5), порт тот же.
         case "''${1:-}" in
           --*) : ;; # явные флаги dsh — передаём как есть, профиль выбирает пользователь
-          "") extra_bin_args=(--profile web --no-open) ;;
+          "")
+            dsh_port=$(( ${toString dshWebPortBase} + $(id -u) - 1000 ))
+            extra_bin_args=(--profile web --no-open --port "$dsh_port")
+            net_specs+=("rev:dsh-web:$dsh_port")
+            ;;
           *) extra_bin_args=(--profile headless) ;;
         esac
         ;;
@@ -238,8 +231,13 @@ pkgs.writeShellApplication {
     trap 'rm -f "$report_snap"' EXIT
     agents-git snapshot "$project_dir" "$report_snap" || true
 
+    # `agents-net host` поднимает мосты на стороне хоста, снимает их при выходе и
+    # отдаёт каталог сокетов песочнице через $AGENTS_NET_DIR; не поднялись — агент
+    # не стартует (AI-SBX-6).
+    for b in ''${net_specs[@]+"''${net_specs[@]}"}; do sandbox_opts+=(--bridge "$b"); done
     rc=0
-    agents-sandbox-exec "$project_dir" "$state_dir" "$mode" --cwd "$PWD" \
+    agents-net host ''${net_specs[@]+"''${net_specs[@]}"} -- \
+      agents-sandbox-exec "$project_dir" "$state_dir" "$mode" --cwd "$PWD" \
       ''${extra_env[@]+"''${extra_env[@]}"} ''${sandbox_opts[@]+"''${sandbox_opts[@]}"} -- \
       direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@" || rc=$?
 
