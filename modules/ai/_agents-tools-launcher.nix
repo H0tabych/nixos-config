@@ -17,6 +17,12 @@
   aiderChat,
   aiderRole,
   dshPolicy,
+  # ВРЕМЕННО выключаемая изоляция (решение владельца 2026-11-08, ROADMAP D22): при
+  # `false` роль запускается без bubblewrap и без сетевого пространства имён — на
+  # хосте и в его сети (в том числе в корпоративном VPN). Умолчание `true` — чтобы тесты
+  # (tests/agent-sandbox.nix, agent-network.nix) продолжали проверять настоящую песочницу;
+  # выключает её только agents-tools.nix. Возврат — `isolation = true` там же.
+  isolation ? true,
 }:
 pkgs.writeShellApplication {
   name = "agent-launcher";
@@ -232,12 +238,32 @@ pkgs.writeShellApplication {
     # `agents-net host` поднимает мосты на стороне хоста, снимает их при выходе и
     # отдаёт каталог сокетов песочнице через $AGENTS_NET_DIR; не поднялись — агент
     # не стартует (AI-SBX-6).
-    for b in ''${net_specs[@]+"''${net_specs[@]}"}; do sandbox_opts+=(--bridge "$b"); done
-    rc=0
-    agents-net host ''${net_specs[@]+"''${net_specs[@]}"} -- \
-      agents-sandbox-exec "$project_dir" "$state_dir" "$mode" --cwd "$PWD" \
-      ''${extra_env[@]+"''${extra_env[@]}"} ''${sandbox_opts[@]+"''${sandbox_opts[@]}"} -- \
-      direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@" || rc=$?
+    ${
+      if isolation then
+        ''
+          for b in ''${net_specs[@]+"''${net_specs[@]}"}; do sandbox_opts+=(--bridge "$b"); done
+          rc=0
+          agents-net host ''${net_specs[@]+"''${net_specs[@]}"} -- \
+            agents-sandbox-exec "$project_dir" "$state_dir" "$mode" --cwd "$PWD" \
+            ''${extra_env[@]+"''${extra_env[@]}"} ''${sandbox_opts[@]+"''${sandbox_opts[@]}"} -- \
+            direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@" || rc=$?
+        ''
+      else
+        ''
+          # ИЗОЛЯЦИЯ ВЫКЛЮЧЕНА (agents-tools.nix, ROADMAP D22): без bwrap, без netns и мостов,
+          # окружение пользователя не очищается, ключи шлюза — переменными (export выше),
+          # сеть — хоста (M2 прозрачен, корпоративный VPN доступен). Режим online/offline
+          # только выбирает ключ шлюза: сетевого ограничения нет. Ограждения `--config`,
+          # `--home-rw`, `--bridge`, защита метаданных git не применяются.
+          echo "agent-launcher: ИЗОЛЯЦИЯ ОТКЛЮЧЕНА (песочница, сеть, очистка окружения не применяются)" >&2
+          mkdir -p "$state_dir"
+          env_pairs=()
+          for ((i = 1; i < ''${#extra_env[@]}; i += 2)); do env_pairs+=("''${extra_env[i]}"); done
+          rc=0
+          env ''${env_pairs[@]+"''${env_pairs[@]}"} \
+            direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@" || rc=$?
+        ''
+    }
 
     agents-git report "$project_dir" "$report_snap" || true
     exit "$rc"
