@@ -26,7 +26,7 @@ is_git_ignored() {
   git check-ignore -q "$1" 2>/dev/null
 }
 
-allowed_root='^(flake\.nix|flake\.lock|justfile|README\.md|\.envrc|\.editorconfig|\.gitignore|\.gitleaks\.toml|\.sops\.yaml|CLAUDE\.md|\.claude|\.github|modules|machines|secrets|assets|templates|tests|scripts|docs)$'
+allowed_root='^(flake\.nix|flake\.lock|justfile|README\.md|\.envrc|\.editorconfig|\.gitignore|\.gitleaks\.toml|\.sops\.yaml|AGENTS\.md|CLAUDE\.md|\.agents|\.claude|\.github|modules|machines|secrets|assets|templates|tests|scripts|docs)$'
 while IFS= read -r -d '' entry; do
   name=$(basename "$entry")
   if [[ "$name" =~ $allowed_root ]]; then

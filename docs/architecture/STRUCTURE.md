@@ -1,6 +1,6 @@
 # Структура репозитория NixOS-конфигурации
 
-> Версия 1.1 · 2026-10-09 · Статус: действующий (изменения 1.1: в корень добавлены `CLAUDE.md` и `.claude/`, в `docs/architecture/` — `ROADMAP.md`; раздел 2, 6, ADR-31, Приложение E)
+> Версия 1.2 · 2026-11-11 · Статус: действующий (изменения 1.1: в корень добавлены `CLAUDE.md` и `.claude/`, в `docs/architecture/` — `ROADMAP.md`; раздел 2, 6, ADR-31, Приложение E. Изменения 1.2 — ADR-47: в корень добавлены `AGENTS.md` и `.agents/`, `CLAUDE.md` становится импортом и спецификой; разделы 2, 7, 13, Приложения E, M)
 > **Подчинено** «Архитектуре NixOS-систем» v2.1 (разделы 2–6, 8, 16) и конкретизирует её раздел 4. При расхождении приоритет у Архитектуры; расхождения, которые документ вносит сознательно, собраны в разделе 13 и оформляются записями ADR-31 и ADR-32.
 > **Разделы 0–13** не называют конкретных программ, версий и пользователей (ARCH-16…18), кроме инструментов каркаса (ARCH-20). **Приложение E** — эталонное дерево для текущей системы (Приложение A Архитектуры). **Приложение M** — матрица соответствия требованиям Архитектуры, AI_SUBSYSTEM и VPN_SUBSYSTEM.
 > Секретов и приватных фактов нет (SEC-5). Имена в примерах — плейсхолдеры, кроме Приложения E.
@@ -56,11 +56,13 @@ nixos-config/
 ├── README.md              # ≤ 60 строк: что это, ссылка на docs/README.md
 ├── .envrc                 # use flake — оболочка разработки репозитория
 ├── .editorconfig
-├── .gitignore             # result*, .env*, ключи age, /docs/private/ (SEC-6)
+├── .gitignore             # result*, .env*, ключи age, /docs/private/ (SEC-6), AGENTS.local.md
 ├── .gitleaks.toml         # правила сканера секретов (SEC-9, VPN-SEC-8)
 ├── .sops.yaml             # только публичные recipients (SEC-7)
-├── CLAUDE.md              # инструкции ассистента: ≤ 200 строк, ссылки на правила по ID (раздел 2)
-├── .claude/               # общие настройки ассистента: settings.json, rules/, commands/ (раздел 2)
+├── AGENTS.md              # канон инструкций для агентов: ≤ 200 строк, ссылки на правила по ID (раздел 2)
+├── CLAUDE.md              # `@AGENTS.md` и только специфика Claude Code (раздел 2)
+├── .agents/               # навыки агентов: skills/<имя>/SKILL.md (раздел 2)
+├── .claude/               # settings.json, agents/, skills → ../.agents/skills (раздел 2)
 ├── .github/workflows/     # CI (раздел 5.3)
 ├── modules/               # ТОЛЬКО flake-parts-модули (раздел 3)
 ├── machines/              # сгенерированное железо хостов (раздел 3.7)
@@ -77,9 +79,11 @@ nixos-config/
 | `flake.nix` | Описывает `inputs` и одну строку `mkFlake … (import-tree ./modules)`. Любая логика — в `modules/core/`. Каждый input, кроме `nixpkgs`, `nixpkgs-unstable` и самих flake-parts/import-tree, имеет `follows` (ARCH-14, A16) |
 | `justfile` | Рецепты — только оболочки над `nix`, `sops`, `nvd`, `scripts/*`. Бизнес-логики нет. Список рецептов — 5.4 |
 | `README.md` | Не дублирует `docs/`; факт живёт в одном месте (ARCH-5) |
-| `.gitignore` | Содержит `/docs/private/`, хотя приватные материалы хранятся **вне** репозитория: это страховка от случайного `git add`. Также `CLAUDE.local.md` и `.claude/settings.local.json` (личные настройки), `.direnv/`, `result*`, `.env*`, файлы ключей |
-| `CLAUDE.md` | Не дублирует документы: только цель, карта документов с правилами поиска по ID, жёсткие запреты, протокол работы и строка «текущее состояние». Размер ≤ 200 строк (крупнее — теряется точность следования). Большие документы через `@`-импорт **не подключаются**: импорт загружается при запуске и не уменьшает расход контекста |
-| `.claude/` | `settings.json` — права (запрет необратимых команд и чтения секретов, разрешение проверок); `rules/*.md` — правила с `paths:` (подключаются только при работе с подходящими файлами); `commands/*.md` — повторяющиеся процедуры. Личное — только в `settings.local.json` (в `.gitignore`). Секретов нет. Имя и формат задаёт сам инструмент: к ARCH-16/ARCH-18 не относится |
+| `.gitignore` | Содержит `/docs/private/`, хотя приватные материалы хранятся **вне** репозитория: это страховка от случайного `git add`. Также `AGENTS.local.md`, `CLAUDE.local.md` и `.claude/settings.local.json` (личные настройки), `.direnv/`, `result*`, `.env*`, файлы ключей |
+| `AGENTS.md` | Канон инструкций для **всех** агентов (ADR-47). Не дублирует документы: только цель, карта документов с правилами поиска по ID, жёсткие запреты, протокол работы и строка «текущее состояние». Размер ≤ 200 строк (крупнее — теряется точность следования). Большие документы через `@`-импорт **не подключаются**: импорт загружается при запуске и не уменьшает расход контекста. Правила для подкаталогов — вложенные `AGENTS.md` в этих каталогах |
+| `CLAUDE.md` | Только импорт `@AGENTS.md` и специфика Claude Code; содержание `AGENTS.md` не дублирует. Агенты в этом репозитории читают оба файла штатно, повторов нет. Без импорта `AGENTS.md` файл считается ошибкой (замечание в отчёте лаунчера, AI-A19) |
+| `.agents/` | `skills/<имя>/SKILL.md` — навыки для всех агентов: поля спецификации навыков общие, дополнительные поля конкретного агента — расширение на свой риск. Команды агентов переводятся в навыки |
+| `.claude/` | `settings.json` — права (запрет необратимых команд и чтения секретов, разрешение проверок); `agents/*.md` — субагенты (только Claude Code); `skills` — симлинк на `../.agents/skills` (Claude Code читает навыки только отсюда). Правила с `paths:` вливаются во вложенные `AGENTS.md` по каталогам. Личное — только в `settings.local.json` (в `.gitignore`). Секретов нет. Имя и формат задаёт сам инструмент: к ARCH-16/ARCH-18 не относится |
 
 Чего в корне **нет и не будет**: `hosts/`, `home-manager/`, `lib/`, `overlays/`, `pkgs/`, `common/`, `private/`, `result*`, файлов с ключами и значениями секретов.
 
@@ -376,7 +380,7 @@ dotfiles/
 │   ├── palette.toml         # единственный источник палитры (DOT-9)
 │   └── gen/                 # генератор colors.* (результат коммитится)
 ├── <приложение>/…           # по каталогу на приложение из реестра
-├── ai/                      # общее для агентов: единый список MCP-серверов + генератор (AI-CTX-3)
+├── ai/                      # общее для агентов: AGENTS.md, CLAUDE.md, skills/ (глобальные), roots.toml, единый список MCP + генератор (AI-CTX-3)
 ├── net/                     # необязательная диагностика туннеля (VPN-OPS-2)
 ├── checks/                  # конфигурации линтеров и валидаторов (DOT-14)
 └── .github/workflows/
@@ -387,7 +391,7 @@ dotfiles/
 | Структура внутри `<приложение>/` | Принадлежит приложению и дистрибутиву; `nixos-config` её не читает (кроме `theme/palette.toml`) |
 | Адаптеры композитора | Отдельные файлы с штатным include в каталоге приложения (SLOT-4d): смена композитора не трогает основной конфиг |
 | Скрипты оболочки | В каталоге своего приложения (DESK-9), без констант хоста |
-| Агенты | Каждый агентный CLI — свой каталог в реестре (AI 2.4); `ai/` хранит только общее |
+| Агенты | `ai/` хранит общее: глобальные инструкции и навыки, корни проектов с исключениями (`roots.toml`), единый список MCP. Свой каталог в реестре у агента — только если у него есть портативный пользовательский конфиг (AI 2.4). Ссылки на фиксированные пути агентов вне `~/.config` — дополнительные цели ссылок записи реестра (DOT-4, ADR-47) |
 | Lock-файлы плагинов | В каталоге приложения (DOT-11) |
 | Машинный слой | `~/.config/machine.d/` создаёт Nix, в репозитории только `machine.d.example/` (DOT-5) |
 
@@ -513,7 +517,7 @@ unenc=$(grep -L '^sops:' secrets/*.yaml secrets/*/*.yaml 2>/dev/null)
 
 | ID | Решение | Затрагивает |
 |---|---|---|
-| ADR-31 | **Структура репозитория — этот документ.** Схема раздела 4 Архитектуры становится кратким обзором со ссылкой на STRUCTURE.md; добавлены: `assets/`, `tests/`, `scripts/`, `CLAUDE.md`, `.claude/`, `docs/architecture/` (в том числе `ROADMAP.md`), `docs/hosts/`, `modules/_templates/`; правило уникальных имён файлов (STR-4a); приватные части `_` могут подключаться владельцем (уточнение ARCH-2); имена реализаций слотов по A.3 (STR-4b) | Разделы 4 и 6, ARCH-2, FEAT-1, OPS-8 |
+| ADR-31 | **Структура репозитория — этот документ.** Схема раздела 4 Архитектуры становится кратким обзором со ссылкой на STRUCTURE.md; добавлены: `assets/`, `tests/`, `scripts/`, `CLAUDE.md`, `.claude/`, `docs/architecture/` (в том числе `ROADMAP.md`), `docs/hosts/`, `modules/_templates/`; правило уникальных имён файлов (STR-4a); приватные части `_` могут подключаться владельцем (уточнение ARCH-2); имена реализаций слотов по A.3 (STR-4b). **Дополнено ADR-47:** в корень добавлены `AGENTS.md` (канон инструкций агентов) и `.agents/` (навыки), `CLAUDE.md` — импорт и специфика | Разделы 4 и 6, ARCH-2, FEAT-1, OPS-8 |
 | ADR-32 | **`user-base` — HM-пресет базового окружения пользователя**, подключаемый фичей `users` **каждому** пользователю независимо от capability. Состав — HM-классы фич этого базиса: `dotfiles-link`, `user-dirs`. Оболочка, VCS и `env-manager` дают тот же результат через nixos-класс в пресете `base` (системные пакеты доступны каждому пользователю хоста), поэтому HM-дубля у них нет (ARCH-5) | USER-3 |
 
 В рамках ADR-31 записи каталога раздела 6, перечисленные в A.3 как «слот → реализация» (`containers`, `env-manager`, `office-suite`, `video-player`, …), получают суффикс `-<р>`; capability `containers` остаётся именем пресета.
@@ -532,8 +536,9 @@ unenc=$(grep -L '^sops:' secrets/*.yaml secrets/*/*.yaml 2>/dev/null)
 nixos-config/
 ├── flake.nix  flake.lock  justfile  README.md
 ├── .envrc  .editorconfig  .gitignore  .gitleaks.toml  .sops.yaml
-├── CLAUDE.md
-├── .claude/                  settings.json  rules/{nix-modules,secrets}.md  commands/{step,gate,rule}.md
+├── AGENTS.md  CLAUDE.md
+├── .agents/                  skills/{step,gate,rule,run-nixos-config}/SKILL.md
+├── .claude/                  settings.json  agents/  skills → ../.agents/skills
 ├── .github/workflows/        check.yml  build-vm.yml  secrets.yml  update-lock.yml
 │
 ├── modules/
@@ -585,14 +590,13 @@ nixos-config/
     ├── README.md  runbook.md  runbook/{tunnel,ai}.md
     ├── architecture/         ARCHITECTURE.md  STRUCTURE.md  AI_SUBSYSTEM.md  VPN_SUBSYSTEM.md  DESIGN_SYSTEM.md  ROADMAP.md
     ├── hosts/                sgms-laptop.md
-    └── adr/                  ADR-001-….md … ADR-032-….md
+    └── adr/                  ADR-001-….md … ADR-047-….md
 
 dotfiles/                     (отдельный репозиторий)
 ├── README.md  REGISTRY.md  install.sh  machine.d.example/
 ├── theme/{palette.toml,gen/}
 ├── nvim/  zsh/  foot/  hypr/  eww/  net/  rofi/  mako/  yazi/  mpv/  git/  mangohud/
-├── claude-code/  opencode/  aider/         # по каталогу на агентный CLI
-├── ai/{mcp/,doctor}                        # общий список MCP-серверов + генератор
+├── ai/{AGENTS.md,CLAUDE.md,skills/,roots.toml,mcp/,doctor}   # глобальные инструкции и навыки агентов, корни проектов, общий список MCP + генератор
 ├── net/                                    # диагностика туннеля
 ├── checks/  .github/workflows/
 ```
@@ -652,6 +656,8 @@ NixOS-модуля, только пакет и пользовательские 
 | DEV-3 | `templates/`, `core/templates.nix` |
 | STO-5 | `just hibernate-offset`, `scripts/hibernate-offset.sh` |
 | AI-A7, AI-A8 | `tests/agent-sandbox.nix` |
+| AI-A18 | `tests/agent-network.nix` |
+| AI-AGT-8, AI-A15, AI-A19 | `AGENTS.md`, `CLAUDE.md`, `.agents/` (раздел 2), `dotfiles/ai/` |
 | AI-INF-8 | `tests/inference-models-dir.nix` |
 | AI-CTX-3 | `dotfiles/ai/` |
 | VPN-OPS-1, VPN-A14 | `tests/tunnel-config.nix`, `tests/fixtures/` |
