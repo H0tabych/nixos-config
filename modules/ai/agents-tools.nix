@@ -81,7 +81,26 @@ _: {
         "cost-autonomous"
       ];
 
-      claudeCode = pkgs.unstable.claude-code;
+      # claude-code из unstable отстаёт от выпуска поставщика (2.1.317 при 2.1.322, ПРОВЕРЕНО
+      # 2026-11-12). Пакет берёт версию и сумму бинарника из аргумента `manifest` — подменяем
+      # только его (значения — manifest.zst.json выпуска 2.1.322). Закрепление отключается
+      # само, когда unstable догонит версию (ARCH-14, AI-AGT-2).
+      claudePin = {
+        version = "2.1.322";
+        platforms.linux-x64 = {
+          binary = "claude.zst";
+          checksum = "9bb7558bd992ca457e6458bf1686572f7a3156b8331dd8443391dbfe590c1eed";
+        };
+      };
+      claudeBase = pkgs.unstable.claude-code;
+      claudeCode =
+        if
+          pkgs.stdenv.hostPlatform.system == "x86_64-linux"
+          && lib.versionOlder claudeBase.version claudePin.version
+        then
+          claudeBase.override { manifest = claudePin; }
+        else
+          claudeBase;
       aiderChat = pkgs.aider-chat;
       # Версия — из закреплённого unstable (ПРОВЕРИТЬ политику при каждом обновлении:
       # `dsh --dump-config`, список записей в _agents-tools-dsh-policy.nix).
