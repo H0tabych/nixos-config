@@ -27,8 +27,7 @@
 }:
 let
   gitTool = pkgs.callPackage ../modules/ai/_agents-tools-git.nix { };
-  netTool = pkgs.callPackage ../modules/ai/_agents-tools-net.nix { };
-  sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix { inherit gitTool netTool; };
+  sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix { inherit gitTool; };
   dshPolicy = pkgs.callPackage ../modules/ai/_agents-tools-dsh-policy.nix { };
 in
 pkgs.testers.runNixOSTest {
@@ -297,20 +296,15 @@ pkgs.testers.runNixOSTest {
         assert status != 0, f"AI-SBX-2: project-dir = {label} ({pdir}) должен быть запрещён"
         machine.fail(f"test -e {STATE}/breach")
 
-    # AI-SBX-5 (R9.17): переменные прокси хоста не пробрасываются; без моста
-    # `proxy` их нет вовсе, с мостом — адрес моста внутри песочницы.
+    # AI-SBX-5 (ADR-47): прокси-переменные M1 (NET-10) из окружения запуска проходят как есть,
+    # SOCKS (`all_proxy`) не передаётся; без них внутри ничего нет (M2).
     out = sandbox_out(
-        "sh -c 'echo p=$http_proxy n=$no_proxy'",
-        env="http_proxy=http://127.0.0.1:1 no_proxy=localhost",
+        "sh -c 'echo p=$http_proxy n=$no_proxy a=$all_proxy'",
+        env="http_proxy=http://127.0.0.1:1 no_proxy=localhost all_proxy=socks5://127.0.0.1:2",
     )
-    assert out.strip() == "p= n=", f"AI-SBX-5: прокси хоста не должны попадать внутрь: {out!r}"
-    machine.succeed("install -d -o agent -g agent /home/agent/bridge/fwd /home/agent/bridge/rev")
-    out = sandbox_out(
-        "sh -c 'echo p=$http_proxy n=$no_proxy'",
-        "--bridge fwd:proxy:10809",
-        env="AGENTS_NET_DIR=/home/agent/bridge",
-    )
-    assert "p=http://127.0.0.1:10809" in out and "n=localhost,127.0.0.1,::1" in out, f"AI-SBX-5: {out!r}"
+    assert out.strip() == "p=http://127.0.0.1:1 n=localhost a=", f"AI-SBX-5: {out!r}"
+    out = sandbox_out("sh -c 'echo p=$http_proxy n=$no_proxy'")
+    assert out.strip() == "p= n=", f"AI-SBX-5: без переменных M1 внутри их нет: {out!r}"
 
     # §2.5 класс D: --app-path отдаёт приложению ЕГО каталог на запись.
     fixture_file("/home/agent/.appstate/sessions", "app-marker", "0644")

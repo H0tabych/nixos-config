@@ -17,12 +17,14 @@
 # бинарники ролей в home.packages не попадают. AI-SBX-4: лаунчер активирует
 # проектное окружение через уже существующий `direnv` (env-manager-direnv,
 # R6.1) перед запуском — без повторной реализации активации окружения.
-# AI-SBX-5 (ADR-44, R9.17): у песочницы свой сетевой netns; наружу — мосты
-# `agents-net` (_agents-tools-net.nix): шлюз и, в online, HTTP-вход туннеля
-# (my.tunnel.local.http; без туннеля на хосте — выхода нет). Режим по умолчанию —
-# по корням рабочих деревьев `~/.config/ai/work-roots` и маркеру `.ai/offline`,
-# облако — флагом `--online` на запуск. Порт веб-интерфейса dsh — на пользователя
-# от `my.ai.gateway.portBase` (+100 + uid − 1000), чтобы не пересекаться со шлюзом.
+# AI-SBX-5 (ADR-47, R9.20): песочница — в своём пространстве имён сети и пользователя от
+# pasta; соединения идут сокетами хоста (маршруты туннеля и корпоративных VPN, резолвер
+# хоста), правила nftables грузит охранник (`agents-net`, `_agents-tools-net.nix`,
+# `_agents-tools-nft.nix`). Режим по умолчанию — online; offline — под корнем
+# `cloud = "deny"` в `~/.config/ai/roots.toml` или флагом `--offline`. Сети VPN —
+# линки `my.tunnel.dns.scopedZones.*.link`; порты служб хоста без аутентификации,
+# закрытые агенту, — `my.net.sensitiveLoopbackPorts` (D21). Порт веб-интерфейса dsh — на
+# пользователя от `my.ai.gateway.portBase` (+100 + uid − 1000), чтобы не пересекаться со шлюзом.
 # Конфиг каждой роли — в dotfiles (AI-AGT-3), под ~/.config/<роль>/. Песочница
 # (AI-SBX-1/2, R9.14) собирает корень из разрешённого и возвращает из ~/.config
 # только белый список (machine.d, ai, git, direnv) и каталоги роли (`--config`),
@@ -55,10 +57,14 @@ _: {
     }:
     let
       gitTool = pkgs.callPackage ./_agents-tools-git.nix { };
-      netTool = pkgs.callPackage ./_agents-tools-net.nix { };
-      sandboxExec = pkgs.callPackage ./_agents-tools-sandbox.nix { inherit gitTool netTool; };
-      # Порт HTTP-входа туннеля (мост `proxy`); null — на хосте нет туннеля.
-      tunnelHttpPort = lib.attrByPath [ "my" "tunnel" "local" "http" "port" ] null osConfig;
+      nftTool = pkgs.callPackage ./_agents-tools-nft.nix { };
+      # Сети VPN — линки корпоративных зон туннеля; на хосте без туннеля список пуст.
+      vpnLinks = map (z: z.link) (lib.attrByPath [ "my" "tunnel" "dns" "scopedZones" ] [ ] osConfig);
+      netTool = pkgs.callPackage ./_agents-tools-net.nix {
+        inherit nftTool vpnLinks;
+        sensitivePorts = osConfig.my.net.sensitiveLoopbackPorts;
+      };
+      sandboxExec = pkgs.callPackage ./_agents-tools-sandbox.nix { inherit gitTool; };
       dshWebPortBase = osConfig.my.ai.gateway.portBase + 100;
 
       # Имя роли для каждого агента берётся из политики хоста, а не пишется
@@ -114,7 +120,6 @@ _: {
           lib
           sandboxExec
           netTool
-          tunnelHttpPort
           dshWebPortBase
           gitTool
           claudeCode
@@ -123,10 +128,6 @@ _: {
           aiderRole
           dshPolicy
           ;
-        # ВРЕМЕННО (решение владельца 2026-11-08, ROADMAP D22): изоляция выключена для всех
-        # ролей — в netns агента нет корпоративного VPN, и работа в проектах за ним
-        # невозможна. Постоянное решение — при переработке подсистемы ИИ. Возврат — `true`.
-        isolation = false;
       };
     in
     {

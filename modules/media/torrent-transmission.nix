@@ -18,6 +18,9 @@
 # секретов**: как у инференса (AI-INF-1), принято осознанно (ADR-43). Через RPC можно
 # добавить торрент и сменить настройки, но не выполнить код: скрипт по завершению
 # выключен, а служба заперта (RootDirectory, ProtectSystem, запись только в свои каталоги).
+# D21 (ADR-47): в `online` агент видит loopback хоста, а uid службы обходит туннель и kill
+# switch. Пароль не вводим; клиент `transmission-remote-gtk` не умеет unix-сокет, поэтому порт
+# RPC объявляется в my.net.sensitiveLoopbackPorts, и сетевой стек агентов его закрывает.
 # Каталоги — на томе вне снимков и бэкапа (/var/lib/nosnapshot, STO-1, AI-INF-8
 # по аналогии): загрузки не должны попадать в снимки корня. Доступ пользователям
 # capability media — членство в группе transmission, umask 002.
@@ -73,6 +76,9 @@ in
       # ADR-43: прямой путь для службы по её uid; читает политика туннеля, если она есть
       # (в M1 ничего не меняет: демон прокси-переменных не читает).
       my.net.bypass.users = [ cfg.user ];
+
+      # D21: порт RPC закрыт в сетевом стеке агентов (my.net.sensitiveLoopbackPorts).
+      my.net.sensitiveLoopbackPorts = [ cfg.settings.rpc-port ];
     };
 
   flake.modules.homeManager.torrent-transmission =

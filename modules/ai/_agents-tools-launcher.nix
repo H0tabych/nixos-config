@@ -9,7 +9,6 @@
   lib,
   sandboxExec,
   netTool,
-  tunnelHttpPort,
   dshWebPortBase,
   gitTool,
   claudeCode,
@@ -17,12 +16,6 @@
   aiderChat,
   aiderRole,
   dshPolicy,
-  # ВРЕМЕННО выключаемая изоляция (решение владельца 2026-11-08, ROADMAP D22): при
-  # `false` роль запускается без bubblewrap и без сетевого пространства имён — на
-  # хосте и в его сети (в том числе в корпоративном VPN). Умолчание `true` — чтобы тесты
-  # (tests/agent-sandbox.nix, agent-network.nix) продолжали проверять настоящую песочницу;
-  # выключает её только agents-tools.nix. Возврат — `isolation = true` там же.
-  isolation ? true,
 }:
 pkgs.writeShellApplication {
   name = "agent-launcher";
@@ -35,31 +28,35 @@ pkgs.writeShellApplication {
   ];
   text = ''
     usage() {
-      echo "usage: agent-launcher <claude|dsh|aider> [--online|--offline] [-- args...]" >&2
+      echo "usage: agent-launcher <claude|dsh|aider> [--offline] [-- args...]" >&2
       exit 1
     }
     [ "$#" -ge 1 ] || usage
     role=$1
     shift
 
-    # Режим (AI-SBX-5, AI-SEC-6): без флага — по корням рабочих деревьев и маркеру
-    # `.ai/offline` (agents-net mode); облако в рабочем дереве — только флагом
-    # `--online` на этот запуск (проект включить его не может, AI-SEC-5).
+    # Режим (AI-SBX-5, AI-SEC-6): облако по умолчанию разрешено (`online`); `offline` — под
+    # корнем `cloud = "deny"` из ~/.config/ai/roots.toml (владелец) либо флагом на этот
+    # запуск. Проект режим не меняет (AI-SEC-5).
     mode=""
     case "''${1:-}" in
-      --online | --offline)
-        mode=''${1#--}
+      --offline)
+        mode=offline
         shift
+        ;;
+      --online)
+        echo "agent-launcher: флага --online больше нет: облако по умолчанию разрешено (ADR-47)" >&2
+        exit 1
         ;;
     esac
     [ "''${1:-}" = "--" ] && shift
     # AI-SBX-7 (ADR-44): работа на месте. Каталог проекта — корень git-дерева
     # (иначе текущий), на запись; метаданные git в песочнице ro (agents-sandbox-exec).
     project_dir=$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")
-    [ -n "$mode" ] || mode=$(agents-net mode "$project_dir" "$HOME/.config/ai/work-roots")
+    [ -n "$mode" ] || mode=$(agents-net mode "$project_dir")
     echo "agent-launcher: режим $mode" >&2
     if [ "$role" = claude ] && [ "$mode" = offline ]; then
-      echo "agent-launcher: claude работает по подписке и в offline не запускается (AI-SBX-5); для облака — флаг --online" >&2
+      echo "agent-launcher: claude работает по подписке и в offline не запускается (AI-SBX-5)" >&2
       exit 1
     fi
 
@@ -94,17 +91,14 @@ pkgs.writeShellApplication {
     # аргументом командной строки. $HOME здесь — настоящий домашний каталог:
     # agent-launcher выполняется до входа в песочницу.
     state_dir="$HOME/.local/state/agents/$role"
-    # Мосты в netns (agents-net): шлюз — всем, кроме claude (подписка, AI-GW-11);
-    # HTTP-вход туннеля — только в online. Порт шлюза — из машинного слоя.
-    net_specs=()
+    # Порт шлюза (на loopback хоста) — единственное, что offline пробрасывает наружу;
+    # claude шлюз не использует (подписка, AI-GW-11). Порты веб-интерфейса — `publish`.
+    gw_port=""
     if [ "$role" != claude ] && [ -n "''${AI_GATEWAY_URL:-}" ]; then
       gw_port=''${AI_GATEWAY_URL##*:}
-      net_specs+=("fwd:gateway:''${gw_port%%/*}")
+      gw_port=''${gw_port%%/*}
     fi
-    tunnel_http_port="${if tunnelHttpPort == null then "" else toString tunnelHttpPort}"
-    if [ "$mode" = online ] && [ -n "$tunnel_http_port" ]; then
-      net_specs+=("fwd:proxy:$tunnel_http_port")
-    fi
+    publish=()
 
     extra_env=()
     extra_bin_args=()
@@ -141,8 +135,7 @@ pkgs.writeShellApplication {
         # Через шлюз эту роль НЕ направляем (AI-GW-11: вход по подписке шлюз не
         # обслуживает). ПРОВЕРЕНО: ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN
         # перебивают вход claude.ai и уводят запросы на более слабую роль шлюза.
-        # Роль ходит со своей авторизацией из ~/.claude, выход — через мост
-        # `proxy` в online (переменные прокси задаёт песочница, AI-SBX-5).
+        # Роль ходит со своей авторизацией из ~/.claude, выход — сокетами хоста (AI-SBX-5).
         ;;
       dsh)
         bin=${lib.getExe deepseekHarness}
@@ -172,13 +165,6 @@ pkgs.writeShellApplication {
         # Политика Nix — патч из хранилища, на каждый запуск и при любых флагах
         # пользователя (поиск, телеметрия, менеджер плагинов; см. файл политики).
         dsh_policy_args=(--patch ${dshPolicy})
-        # all_proxy отдаём пустым: dsh не поддерживает SOCKS и предупреждает об
-        # этом на каждом запуске; HTTPS всё равно идёт через https_proxy, так
-        # что туннель не обходится (AI_SUBSYSTEM.md §2.6, NET-10).
-        extra_env+=(
-          --env "all_proxy="
-          --env "ALL_PROXY="
-        )
         # --profile обязателен; шаблоны: acp, web, headless, sdk, sdk-minimal.
         # Терминального интерфейса нет; полноценный агент — профиль `web` (сервер
         # на loopback, URL с токеном). Поэтому:
@@ -186,14 +172,14 @@ pkgs.writeShellApplication {
         #   с текстом задачи          → headless, «выполнить и выйти»;
         #   с флагами (--*)           → как есть, профиль выбирает пользователь.
         # --no-open: браузер запускает человек снаружи, не песочница (AI-SBX-2).
-        # --port фиксирован (на пользователя): веб-интерфейс внутри netns виден
-        # хосту через обратный мост rev:dsh-web (AI-SBX-5), порт тот же.
+        # --port фиксирован (на пользователя): веб-интерфейс внутри пространства сети агента
+        # публикуется на 127.0.0.1 хоста тем же портом (AI-SBX-5, `agents-net run`).
         case "''${1:-}" in
           --*) extra_bin_args=("''${dsh_policy_args[@]}") ;; # явные флаги — как есть, профиль выбирает пользователь
           "")
             dsh_port=$(( ${toString dshWebPortBase} + $(id -u) - 1000 ))
             extra_bin_args=(--profile web "''${dsh_policy_args[@]}" --no-open --port "$dsh_port")
-            net_specs+=("rev:dsh-web:$dsh_port")
+            publish+=("$dsh_port")
             ;;
           *) extra_bin_args=(--profile headless "''${dsh_policy_args[@]}") ;;
         esac
@@ -235,35 +221,13 @@ pkgs.writeShellApplication {
     trap 'rm -f "$report_snap"' EXIT
     agents-git snapshot "$project_dir" "$report_snap" || true
 
-    # `agents-net host` поднимает мосты на стороне хоста, снимает их при выходе и
-    # отдаёт каталог сокетов песочнице через $AGENTS_NET_DIR; не поднялись — агент
-    # не стартует (AI-SBX-6).
-    ${
-      if isolation then
-        ''
-          for b in ''${net_specs[@]+"''${net_specs[@]}"}; do sandbox_opts+=(--bridge "$b"); done
-          rc=0
-          agents-net host ''${net_specs[@]+"''${net_specs[@]}"} -- \
-            agents-sandbox-exec "$project_dir" "$state_dir" "$mode" --cwd "$PWD" \
-            ''${extra_env[@]+"''${extra_env[@]}"} ''${sandbox_opts[@]+"''${sandbox_opts[@]}"} -- \
-            direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@" || rc=$?
-        ''
-      else
-        ''
-          # ИЗОЛЯЦИЯ ВЫКЛЮЧЕНА (agents-tools.nix, ROADMAP D22): без bwrap, без netns и мостов,
-          # окружение пользователя не очищается, ключи шлюза — переменными (export выше),
-          # сеть — хоста (M2 прозрачен, корпоративный VPN доступен). Режим online/offline
-          # только выбирает ключ шлюза: сетевого ограничения нет. Ограждения `--config`,
-          # `--home-rw`, `--bridge`, защита метаданных git не применяются.
-          echo "agent-launcher: ИЗОЛЯЦИЯ ОТКЛЮЧЕНА (песочница, сеть, очистка окружения не применяются)" >&2
-          mkdir -p "$state_dir"
-          env_pairs=()
-          for ((i = 1; i < ''${#extra_env[@]}; i += 2)); do env_pairs+=("''${extra_env[i]}"); done
-          rc=0
-          env ''${env_pairs[@]+"''${env_pairs[@]}"} \
-            direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@" || rc=$?
-        ''
-    }
+    # `agents-net run` поднимает пространство сети агента (pasta), охранник грузит правила
+    # nftables до старта песочницы; не поднялось — агент не стартует (AI-SBX-6).
+    rc=0
+    agents-net run "$mode" "''${gw_port:--}" ''${publish[@]+"''${publish[@]}"} -- \
+      agents-sandbox-exec "$project_dir" "$state_dir" "$mode" --cwd "$PWD" \
+      ''${extra_env[@]+"''${extra_env[@]}"} ''${sandbox_opts[@]+"''${sandbox_opts[@]}"} -- \
+      direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@" || rc=$?
 
     agents-git report "$project_dir" "$report_snap" || true
     exit "$rc"

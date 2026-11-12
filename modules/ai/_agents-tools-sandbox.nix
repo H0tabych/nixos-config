@@ -13,26 +13,27 @@
 # ai, git, direnv + `--config`), ro. Запись — `project-dir` и `state-dir`; у роли
 # свои XDG_CACHE/STATE/DATA_HOME внутри state-dir.
 # AI-SBX-3: окружение с нуля (`env -i`); ключ шлюза — значением через `--pass-env`.
-# AI-SBX-5 (R9.17): свой пустой netns; наружу — только мосты `--bridge`
-# (`agents-net`). `online`: внутри прокси на мост `proxy`; `offline`: ни прокси,
-# ни сокета демона сборки.
+# AI-SBX-5 (ADR-47, R9.20): сеть даёт охранник (`agents-net guard`: pasta + nftables), он
+# выставляет AGENTS_NET_GUARDED=1. Агент во вложенном пространстве пользователя
+# (`--unshare-user`) прав над сетевым не имеет и правил не меняет. Без охранника (тесты,
+# прямой вызов) — пустой netns (`--unshare-net`). resolv.conf — AGENTS_RESOLV_CONF.
+# `online`: есть сокет демона сборки; `offline`: нет.
 # AI-SBX-7 (R9.15): работа на месте; метаданные git и `.envrc` ro, список —
 # `agents-git binds`; `.direnv` у роли свой.
 {
   pkgs,
   gitTool,
-  netTool,
 }:
 pkgs.writeShellApplication {
   name = "agents-sandbox-exec";
   runtimeInputs = [
     pkgs.bubblewrap
+    pkgs.nftables
     gitTool
-    netTool
   ];
   text = ''
     usage() {
-      echo "usage: agents-sandbox-exec <project-dir> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--cwd PATH] [--home-rw] [--bridge fwd|rev:NAME:PORT]... -- <cmd...>" >&2
+      echo "usage: agents-sandbox-exec <project-dir> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--cwd PATH] [--home-rw] -- <cmd...>" >&2
       exit 1
     }
 
@@ -51,8 +52,7 @@ pkgs.writeShellApplication {
     # --pass-env — то же, но значение из окружения процесса (ключ шлюза: не в argv);
     # --config — каталог роли в ~/.config (белый список), ro; --app-path — свой
     # каталог приложения на запись (§2.5, класс D); --cwd — рабочий каталог внутри
-    # project-dir; --bridge — мост в netns (AI-SBX-5, спецификация как у `agents-net`,
-    # каталог сокетов — $AGENTS_NET_DIR от `agents-net host`). --home-rw — ОСЛАБЛЕННЫЙ режим (AI-SBX-12): $HOME на запись
+    # project-dir. --home-rw — ОСЛАБЛЕННЫЙ режим (AI-SBX-12): $HOME на запись
     # целиком; корень из разрешённого и сокеты сессии/секреты шлюза недоступны
     # по-прежнему, теряются ключи SSH/GPG, ключ расшифровки, репозиторий
     # конфигурации и прочее содержимое $HOME.
@@ -62,8 +62,6 @@ pkgs.writeShellApplication {
     app_paths=()
     cwd_arg=""
     home_rw=0
-    bridge_dir="''${AGENTS_NET_DIR:-}"
-    bridges=()
     while :; do
       case "''${1:-}" in
         --env)
@@ -93,19 +91,24 @@ pkgs.writeShellApplication {
           home_rw=1
           shift
           ;;
-        --bridge)
-          bridges+=("$2")
-          shift 2
-          ;;
         *) break ;;
       esac
     done
     [ "''${1:-}" = "--" ] || usage
     shift
-    # Мосты без каталога сокетов — ошибка вызывающего.
-    { [ -n "$bridge_dir" ] || [ "''${#bridges[@]}" -eq 0 ]; } || usage
     real_home="$HOME"
-    uid=$(id -u)
+    # В пространстве охранника `id` — root пространства: настоящие uid/gid идут от `agents-net run`.
+    uid=''${AGENTS_HOST_UID:-$(id -u)}
+    gid=''${AGENTS_HOST_GID:-$(id -g)}
+    guarded=0
+    [ "''${AGENTS_NET_GUARDED:-}" = 1 ] && guarded=1
+    resolv_conf=''${AGENTS_RESOLV_CONF:-}
+    unset AGENTS_RESOLV_CONF AGENTS_NET_GUARDED AGENTS_HOST_UID AGENTS_HOST_GID
+    # AI-SBX-6: охранник заявлен — правила обязаны быть загружены.
+    [ "$guarded" -eq 0 ] || nft list table inet agents > /dev/null 2>&1 || {
+      echo "agents-sandbox-exec: охранник заявлен, таблицы nftables inet agents нет (AI-SBX-6)" >&2
+      exit 1
+    }
     # project-dir не создаём: несуществующий путь — ошибка вызывающего (AI-SBX-6).
     mkdir -p "$state_dir/cache" "$state_dir/state" "$state_dir/data"
 
@@ -155,20 +158,10 @@ pkgs.writeShellApplication {
     )
     [ -n "''${LANG:-}" ] && env_args+=("LANG=$LANG")
 
-    # Выход в сеть только через мост `proxy` (HTTP-вход туннеля, NET-7): адрес
-    # внутри тот же, что у хоста, переменные хоста не пробрасываются (в M2 их нет).
-    proxy_port=""
-    for b in ''${bridges[@]+"''${bridges[@]}"}; do
-      [[ "$b" =~ ^fwd:proxy:([0-9]+)$ ]] && proxy_port="''${BASH_REMATCH[1]}"
+    # Прокси-переменные есть только в M1 (NET-10), в M2 их нет; `all_proxy` (SOCKS) не передаём.
+    for v in http_proxy HTTP_PROXY https_proxy HTTPS_PROXY no_proxy NO_PROXY; do
+      [ -n "''${!v:-}" ] && env_args+=("$v=''${!v}")
     done
-    if [ -n "$proxy_port" ]; then
-      for v in http_proxy HTTP_PROXY https_proxy HTTPS_PROXY; do
-        env_args+=("$v=http://127.0.0.1:$proxy_port")
-      done
-      for v in no_proxy NO_PROXY; do
-        env_args+=("$v=localhost,127.0.0.1,::1")
-      done
-    fi
     [ -n "''${AI_GATEWAY_URL:-}" ] && env_args+=("AI_GATEWAY_URL=$AI_GATEWAY_URL")
     for v in ''${pass_env[@]+"''${pass_env[@]}"}; do
       [ -n "''${!v:-}" ] && env_args+=("$v=''${!v}")
@@ -183,7 +176,9 @@ pkgs.writeShellApplication {
       --unshare-ipc
       --unshare-uts
       --unshare-cgroup
-      --unshare-net
+      --unshare-user
+      --uid "$uid"
+      --gid "$gid"
       --die-with-parent
       --ro-bind /nix/store /nix/store
       --ro-bind /etc /etc
@@ -193,15 +188,21 @@ pkgs.writeShellApplication {
       # Порядок важен: tmpfs /run затирает всё, что смонтировано в него раньше.
       --tmpfs /run
       --ro-bind-try /run/current-system /run/current-system
-      --ro-bind-try /run/systemd/resolve/stub-resolv.conf /run/systemd/resolve/stub-resolv.conf
       --perms 0700 --dir "/run/user/$uid"
     )
     # Сокет демона сборки — канал выхода (загрузки с фиксированным хэшем), в offline скрыт.
     [ "$mode" = online ] && bwrap_args+=(--ro-bind-try /nix/var/nix/daemon-socket /nix/var/nix/daemon-socket)
-    [ -z "$bridge_dir" ] || bwrap_args+=(
-      --ro-bind "$bridge_dir/fwd" /run/agents-bridge/fwd
-      --bind "$bridge_dir/rev" /run/agents-bridge/rev
-    )
+    [ "$guarded" -eq 1 ] || bwrap_args+=(--unshare-net)
+    # resolv.conf: bwrap не монтирует поверх симлинка — файл кладётся по конечному пути
+    # ссылки ПОСЛЕ `--tmpfs /run`, содержимое — дескриптором, исходный файл удаляется.
+    if [ -n "$resolv_conf" ]; then
+      resolv_target=$(readlink -m /etc/resolv.conf)
+      exec 3< "$resolv_conf"
+      rm -f -- "$resolv_conf"
+      bwrap_args+=(--dir "$(dirname "$resolv_target")" --ro-bind-data 3 "$resolv_target")
+    else
+      bwrap_args+=(--ro-bind-try /run/systemd/resolve/stub-resolv.conf /run/systemd/resolve/stub-resolv.conf)
+    fi
     for f in /bin/sh /usr/bin/env; do
       if [ -e "$f" ]; then
         bwrap_args+=(--symlink "$(readlink -f "$f")" "$f")
@@ -242,9 +243,8 @@ pkgs.writeShellApplication {
     done
 
     # AI-SBX-6 (fail-closed): ошибка bwrap (AI-SBX-11) останавливает скрипт
-    # (`set -e`) до исполнения команды. Мосты внутри netns — `agents-net inside`.
+    # (`set -e`) до исполнения команды.
     rm -f "$git_binds_file"
-    [ "''${#bridges[@]}" -eq 0 ] || set -- agents-net inside "''${bridges[@]}" -- "$@"
     exec env -i "''${env_args[@]}" bwrap "''${bwrap_args[@]}" -- "$@"
   '';
 }

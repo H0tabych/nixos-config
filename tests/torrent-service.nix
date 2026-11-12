@@ -59,5 +59,11 @@ pkgs.testers.runNixOSTest {
 
       with subtest("Служба объявляет себя в my.net.bypass.users (ADR-43)"):
           assert ${builtins.toJSON nodes.machine.my.net.bypass.users} == ["transmission"]
+
+      with subtest("Порт RPC объявлен в my.net.sensitiveLoopbackPorts (D21, ADR-47)"):
+          # Сетевой стек агентов закрывает этот порт; он должен совпадать с реальным слушателем.
+          ports = ${builtins.toJSON nodes.machine.my.net.sensitiveLoopbackPorts}
+          assert ports == [9091], ports
+          assert "127.0.0.1:%d" % ports[0] in machine.succeed("ss -ltn 'sport = :%d'" % ports[0])
     '';
 }
