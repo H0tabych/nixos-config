@@ -27,7 +27,10 @@
 }:
 let
   gitTool = pkgs.callPackage ../modules/ai/_agents-tools-git.nix { };
-  sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix { inherit gitTool; };
+  sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix {
+    inherit gitTool;
+    mounts = import ../modules/ai/_agents-tools-sandbox-mounts.nix;
+  };
   dshPolicy = pkgs.callPackage ../modules/ai/_agents-tools-dsh-policy.nix { };
 in
 pkgs.testers.runNixOSTest {
@@ -142,7 +145,6 @@ pkgs.testers.runNixOSTest {
     fixture_file("/home/agent/.config/machine.d/ai-gateway-env", "machine-marker", "0644")
     fixture_file("/home/agent/.config/git/config", "'[gitmarker]'", "0644")
     fixture_file("/home/agent/.config/direnv/direnvrc", "direnvrc-marker", "0644")
-    fixture_file("/home/agent/.config/aider/aider.conf.yml", "aider-marker", "0644")
     fixture_file("/home/agent/.config/claude-code/settings.json", "config-marker", "0644")
     fixture_file("/home/agent/.config/evil/x", "evil-marker", "0644")
     fixture_file("/home/agent/.local/share/direnv/allow/test", "allow-marker", "0644")
@@ -249,7 +251,6 @@ pkgs.testers.runNixOSTest {
         assert marker in sandbox_out(f"cat {path}"), f"AI-SBX-2: {path} из белого списка должен читаться"
         status, _ = machine.execute(sandbox(f"touch {path}-w"))
         assert status != 0, f"AI-SBX-2: {path} из белого списка — только чтение"
-    assert "aider-marker" in sandbox_out("cat /home/agent/.config/aider/aider.conf.yml", "--config aider")
     assert "config-marker" in sandbox_out(
         "cat /home/agent/.config/claude-code/settings.json", "--config claude-code"
     ), "--config открывает каталог роли"
@@ -337,6 +338,31 @@ pkgs.testers.runNixOSTest {
     machine.fail("test -e /etc/should-not-exist-homerw")
     status, _ = machine.execute(sandbox("true", HRW, project="/"))
     assert status != 0, "project-dir = / запрещён в любом режиме"
+
+    # === AI-SBX-13: --private-*: состояние супервизора фоновых сессий не общее с хостом ==
+    fixture_file("/home/agent/.claude/daemon/control.key", "daemon-key-marker", "0600")
+    fixture_file("/home/agent/.claude/daemon.status.json", "host-status-marker", "0644")
+    PRIV = f"{HRW} --private-dir .claude/daemon --private-file .claude/daemon.status.json"
+    status, out = machine.execute(sandbox("cat /home/agent/.claude/daemon/control.key", PRIV))
+    assert "daemon-key-marker" not in out, "AI-SBX-13: ключ управления супервизором хоста не виден"
+    assert "host-status-marker" not in sandbox_out("cat /home/agent/.claude/daemon.status.json", PRIV), (
+        "AI-SBX-13: реестр хоста подменён"
+    )
+    # Запись внутри не доходит до хоста (очередь запросов хоста не достижима из песочницы).
+    sandbox_out(
+        "sh -c " + shlex.quote("mkdir -p /home/agent/.claude/daemon/dispatch && touch /home/agent/.claude/daemon/dispatch/req"),
+        PRIV,
+    )
+    machine.fail("test -e /home/agent/.claude/daemon/dispatch/req")
+    assert "daemon-key-marker" in machine.succeed(outside("cat /home/agent/.claude/daemon/control.key")), (
+        "контроль: на хосте ключ на месте"
+    )
+    # Остальной $HOME в --home-rw по-прежнему доступен; без --home-rw опции запрещены.
+    assert "fake-ssh-key" in sandbox_out("cat /home/agent/.ssh/id_ed25519", PRIV)
+    status, _ = machine.execute(sandbox("true", "--private-dir .claude/daemon"))
+    assert status != 0, "--private-dir без --home-rw не имеет смысла — отказ"
+    status, _ = machine.execute(sandbox("true", f"{HRW} --private-dir ../escape"))
+    assert status != 0, "--private-dir не выходит за $HOME"
 
     # === Политика Nix для dsh (R9.14, R9.18): поиск, телеметрия, менеджер плагинов ==
     text = machine.succeed("cat /etc/dsh-policy.yml")

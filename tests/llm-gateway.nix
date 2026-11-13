@@ -50,7 +50,7 @@ let
       localRoles = [ "local-chat" ];
       nativeProvider = "primary";
     };
-    aider = {
+    localonly = {
       cloudRoles = [ ];
       localRoles = [ "local-chat" ];
       nativeProvider = null;
@@ -89,8 +89,8 @@ let
     keyIds = [
       "dsh-online"
       "dsh-offline"
-      "aider-online"
-      "aider-offline"
+      "localonly-online"
+      "localonly-offline"
     ];
     credPath = id: "/etc/test-secrets/provider-${id}";
   };
@@ -243,9 +243,9 @@ pkgs.testers.runNixOSTest {
     machine.succeed("systemctl is-active llm-gateway-alice.service")
 
     # --- Ключи: файлы пользователя, права, постоянство.
-    for name in ["dsh-online", "dsh-offline", "aider-online", "aider-offline"]:
+    for name in ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline"]:
         assert key(name).startswith("sk-bf-"), name
-    assert len({key(n) for n in ["dsh-online", "dsh-offline", "aider-online", "aider-offline"]}) == 4
+    assert len({key(n) for n in ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline"]}) == 4
 
     # --- Роль → провайдер и реальная модель (AI-GW-2); ключ провайдера — из секрета службы.
     code, body = ask("cost-autonomous", key("dsh-online"))
@@ -297,7 +297,7 @@ pkgs.testers.runNixOSTest {
     assert code != 200 and len(provider_log()) == before, "offline-ключ на Messages-маршруте"
 
     # --- Локальная роль доступна обоим режимам.
-    for name in ["dsh-online", "dsh-offline", "aider-online", "aider-offline"]:
+    for name in ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline"]:
         code, body = ask("local-chat", key(name))
         assert code == 200, (name, code, body)
         last = provider_log()[-1]
@@ -306,9 +306,9 @@ pkgs.testers.runNixOSTest {
     # --- Матрица запретов (AI-GW-4): до провайдера запрос не доходит.
     denied("cost-autonomous", key("dsh-offline"), "offline-ключ и облачная роль")
     denied("native-big", key("dsh-offline"), "offline-ключ и нативная модель")
-    denied("cost-autonomous", key("aider-online"), "роль не из перечня агента")
-    denied("native-big", key("aider-online"), "нативная модель без привязки к провайдеру")
-    denied("native-big", key("aider-offline"), "offline-ключ aider и нативная модель")
+    denied("cost-autonomous", key("localonly-online"), "роль не из перечня агента")
+    denied("native-big", key("localonly-online"), "нативная модель без привязки к провайдеру")
+    denied("native-big", key("localonly-offline"), "offline-ключ localonly и нативная модель")
     denied("experimental", key("dsh-online"), "роль провайдера без ключа (AI-GW-5, AI-GW-9)")
     denied("native-big", None, "запрос без ключа")
     denied("native-big", "sk-bf-wrong", "чужой ключ")
@@ -326,7 +326,7 @@ pkgs.testers.runNixOSTest {
     machine.fail("su alice -c 'ls /var/lib/private/llm-gateway-alice'")
     machine.fail("su alice -c 'ls /var/lib/llm-gateway-alice'")
     assert machine.succeed(f"ls {KEYS}").split() == sorted(
-        ["dsh-online", "dsh-offline", "aider-online", "aider-offline"]
+        ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline"]
     ), "пользователю публикуются только ключи доступа"
     machine.fail(f"grep -r fake-provider-key {KEYS}")
     # Другой пользователь (без ml, USER-7) не читает чужие ключи и каталог.
@@ -341,13 +341,13 @@ pkgs.testers.runNixOSTest {
     assert all(v["mcp_configs"] == [] and not v["allow_all_providers"] for v in vks.values())
     assert "spare" not in cfg["providers"], "провайдер без ключа должен быть вычеркнут"
     budgets = {b["virtual_key_id"]: b for b in cfg["governance"]["budgets"]}
-    assert budgets["dsh-online"]["max_limit"] == 10 and "aider-online" not in budgets, budgets
+    assert budgets["dsh-online"]["max_limit"] == 10 and "localonly-online" not in budgets, budgets
 
     # --- Постоянство ключей и возврат после перезапуска.
-    before = {n: key(n) for n in ["dsh-online", "aider-offline"]}
+    before = {n: key(n) for n in ["dsh-online", "localonly-offline"]}
     machine.succeed("systemctl restart llm-gateway-alice.service")
     machine.wait_for_open_port(PORT)
-    assert before == {n: key(n) for n in ["dsh-online", "aider-offline"]}, "ключи не должны меняться"
+    assert before == {n: key(n) for n in ["dsh-online", "localonly-offline"]}, "ключи не должны меняться"
     code, _ = ask("native-small", key("dsh-online"))
     assert code == 200
 

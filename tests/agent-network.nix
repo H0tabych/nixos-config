@@ -25,7 +25,10 @@ let
     vpnLinks = [ "tun0" ];
     sensitivePorts = [ 9091 ];
   };
-  sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix { inherit gitTool; };
+  sandboxExec = pkgs.callPackage ../modules/ai/_agents-tools-sandbox.nix {
+    inherit gitTool;
+    mounts = import ../modules/ai/_agents-tools-sandbox-mounts.nix;
+  };
   dshPolicy = pkgs.callPackage ../modules/ai/_agents-tools-dsh-policy.nix { };
 
   # Заглушка агента: `--probe <команда...>` — выполнить команду внутри песочницы;
@@ -50,18 +53,17 @@ let
       fi
     '';
 
+  # Адаптеры настоящие (AI-AGT-9), пакеты агентов — заглушки.
   launcher = pkgs.callPackage ../modules/ai/_agents-tools-launcher.nix {
-    inherit
-      sandboxExec
-      netTool
-      gitTool
-      dshPolicy
-      ;
-    dshWebPortBase = 11600;
-    claudeCode = stub "claude";
-    deepseekHarness = stub "dsh";
-    aiderChat = stub "aider";
-    aiderRole = "local-fast";
+    inherit sandboxExec netTool gitTool;
+    adapters = [
+      (pkgs.callPackage ../modules/ai/_agents-tools-claude.nix { claudeCode = stub "claude"; })
+      (pkgs.callPackage ../modules/ai/_agents-tools-dsh.nix {
+        deepseekHarness = stub "dsh";
+        inherit dshPolicy;
+        webPortBase = 11600;
+      })
+    ];
   };
 in
 pkgs.testers.runNixOSTest {
@@ -176,7 +178,7 @@ pkgs.testers.runNixOSTest {
         f"'export AI_GATEWAY_KEYS_DIR=/run/llm-gateway/agent' > {HOME}/.config/machine.d/ai-gateway-env"
     )
     machine.succeed("install -d -m755 /run/llm-gateway /run/llm-gateway/agent")
-    for key in ["aider-online", "aider-offline", "dsh-online", "dsh-offline"]:
+    for key in ["dsh-online", "dsh-offline"]:
         machine.succeed(f"echo {key}-key > /run/llm-gateway/agent/{key} && chown agent:agent /run/llm-gateway/agent/{key}")
     ROOTS = f"{HOME}/.config/ai/roots.toml"
     as_agent(f"printf '%s\n' '[[root]]' 'path = \"~/work\"' 'cloud = \"deny\"' > {ROOTS}")
@@ -196,9 +198,9 @@ pkgs.testers.runNixOSTest {
     if nft add table inet probe 2>/dev/null; then echo nftw=OPEN; else echo nftw=CLOSED; fi
     echo "resolv=$(grep -m1 nameserver /etc/resolv.conf)"
     echo "proxyenv=$(printenv http_proxy)"
-    echo "key=$(printenv OPENAI_API_KEY)"
     echo "dskey=$(printenv DEEPSEEK_API_KEY)"
     echo "dsurl=$(printenv DEEPSEEK_BASE_URL)"
+    echo "dsmode=$(printenv DSH_PERMISSION_MODE)"
     """
 
 
@@ -243,9 +245,9 @@ pkgs.testers.runNixOSTest {
     assert ctl["abstract"] == "OPEN", ctl
 
     # === online (по умолчанию): сеть как у пользователя ========================
-    out, r = probe_in("aider", f"{HOME}/other/free")
-    assert "режим online" in out, f"AI-SEC-6: по умолчанию online: {out}"
-    assert r["key"] == "aider-online-key", "ключ шлюза — по режиму online"
+    out, r = probe_in("dsh", f"{HOME}/other/free")
+    assert "сеть online" in out, f"AI-SEC-6: по умолчанию online: {out}"
+    assert r["dskey"] == "dsh-online-key", "ключ шлюза — по сети online"
     assert r["gateway"] == "gateway-ok", f"AI-A18: шлюз: {out}"
     assert r["db"] == "database-ok", f"AI-A18: loopback хоста (база данных на localhost): {out}"
     assert r["vpnip"] != "", f"AI-A18/D22: VPN-хост по адресу: {out}"
@@ -263,9 +265,9 @@ pkgs.testers.runNixOSTest {
     assert_clean()
 
     # === offline: шлюз, DNS и сети VPN; остальное, включая адреса хоста, закрыто ======
-    out, r = probe_in("aider --offline", f"{HOME}/other/free")
-    assert "режим offline" in out, out
-    assert r["key"] == "aider-offline-key", "ключ шлюза — по режиму offline"
+    out, r = probe_in("dsh --offline", f"{HOME}/other/free")
+    assert "сеть offline" in out, out
+    assert r["dskey"] == "dsh-offline-key", "ключ шлюза — по сети offline"
     assert r["gateway"] == "gateway-ok", f"AI-A18: шлюз в offline доступен: {out}"
     assert r["vpnip"] != "" and r["vpnname"] != "", f"AI-A18: сети VPN и их DNS в offline доступны: {out}"
     for k in ["db", "sens", "inet", "hosttun", "hostwan"]:
@@ -275,26 +277,26 @@ pkgs.testers.runNixOSTest {
     assert_clean()
 
     # === Корни проекта (roots.toml): cloud = "deny" → offline; маркер проекта не действует ===
-    out, r = probe_in("aider", f"{HOME}/work/p1")
-    assert "режим offline" in out and r["inet"] == "" and r["gateway"] == "gateway-ok", f"корень deny → offline: {out}"
-    out, r = probe_in("aider", f"{HOME}/other/marked")
-    assert "режим online" in out and r["inet"] != "", f"AI-SEC-5: маркер .ai/offline в проекте ничего не меняет: {out}"
-    status, out = launch("aider --online", f"{HOME}/other/free")
+    out, r = probe_in("dsh", f"{HOME}/work/p1")
+    assert "сеть offline" in out and r["inet"] == "" and r["gateway"] == "gateway-ok", f"корень deny → offline: {out}"
+    out, r = probe_in("dsh", f"{HOME}/other/marked")
+    assert "сеть online" in out and r["inet"] != "", f"AI-SEC-5: маркер .ai/offline в проекте ничего не меняет: {out}"
+    status, out = launch("dsh --online", f"{HOME}/other/free")
     assert status != 0 and "--online больше нет" in out, out
     # Файл есть, но не разобран — отказ запуска, а не молчаливый online.
     as_agent(f"cp {ROOTS} {ROOTS}.ok && printf '%s\n' '[[root' > {ROOTS}")
-    machine.succeed(f"rm -f {HOME}/other/free/stub-started-aider")
-    status, out = launch("aider", f"{HOME}/other/free")
+    machine.succeed(f"rm -f {HOME}/other/free/stub-started-dsh")
+    status, out = launch("dsh", f"{HOME}/other/free")
     assert status != 0 and "не разобран" in out, f"roots.toml сломан — отказ: {out}"
-    machine.fail(f"test -e {HOME}/other/free/stub-started-aider")
+    machine.fail(f"test -e {HOME}/other/free/stub-started-dsh")
     as_agent(f"printf '%s\n' '[[root]]' 'cloud = \"maybe\"' 'path = \"~/x\"' > {ROOTS}")
-    status, out = launch("aider", f"{HOME}/other/free")
+    status, out = launch("dsh", f"{HOME}/other/free")
     assert status != 0 and "допустимо deny | allow" in out, out
     as_agent(f"mv {ROOTS}.ok {ROOTS}")
     # Файла нет совсем — облако разрешено по умолчанию.
     as_agent(f"mv {ROOTS} {ROOTS}.off")
-    out, r = probe_in("aider", f"{HOME}/work/p1")
-    assert "режим online" in out and r["inet"] != "", f"без roots.toml — online: {out}"
+    out, r = probe_in("dsh", f"{HOME}/work/p1")
+    assert "сеть online" in out and r["inet"] != "", f"без roots.toml — online: {out}"
     as_agent(f"mv {ROOTS}.off {ROOTS}")
 
     # === claude: подписка — в offline не запускается =========================
@@ -302,33 +304,58 @@ pkgs.testers.runNixOSTest {
     assert status != 0 and "offline не запускается" in out, f"claude в offline: отказ: {out}"
     machine.fail(f"test -e {HOME}/work/p1/stub-started-claude")
     out, r = probe_in("claude", f"{HOME}/other/free")
-    assert r["vpnname"] != "" and r["inet"] != "" and r["key"] == "", f"claude в online: сеть хоста, ключа шлюза нет: {out}"
+    assert r["vpnname"] != "" and r["inet"] != "" and r["dskey"] == "", f"claude в online: сеть хоста, ключа шлюза нет: {out}"
+
+    # === Режимы агента (AI-AGT-1, AI-AGT-9): autonomous по умолчанию, `--controlled` ====
+    # claude: в autonomous флага режима нет (настройки пользователя), в controlled — manual.
+    out, r = probe_in("claude", f"{HOME}/other/free")
+    assert "режим autonomous" in out, out
+    assert "--permission-mode" not in machine.succeed(f"cat {HOME}/other/free/stub-args-claude")
+    out, r = probe_in("claude --controlled", f"{HOME}/other/free")
+    assert "режим controlled" in out, out
+    assert "--permission-mode\nmanual" in machine.succeed(f"cat {HOME}/other/free/stub-args-claude")
+    # Список MCP не съедает аргументы пользователя (подкоманду, текст задачи).
+    as_agent(f"mkdir -p {HOME}/.config/ai/generated && echo '{{}}' > {HOME}/.config/ai/generated/claude.mcp.json")
+    launch("claude -- 'сделай что-нибудь'", f"{HOME}/other/free")
+    args = machine.succeed(f"cat {HOME}/other/free/stub-args-claude").splitlines()
+    assert f"--mcp-config={HOME}/.config/ai/generated/claude.mcp.json" in args, f"MCP одним аргументом: {args}"
+    assert "--mcp-config" not in args and args[0] == "сделай что-нибудь", f"задача — первый аргумент, флаги после: {args}"
+    launch("claude -- attach abc123", f"{HOME}/other/free")
+    args = machine.succeed(f"cat {HOME}/other/free/stub-args-claude").splitlines()
+    assert args[:2] == ["attach", "abc123"], f"подкоманда агента идёт первой: {args}"
+    # dsh: режим — штатная переменная DSH_PERMISSION_MODE; флаги сочетаются в любом порядке.
+    out, r = probe_in("dsh", f"{HOME}/other/free")
+    assert r["dsmode"] == "danger-full-access", f"dsh autonomous: граница — песочница лаунчера: {out}"
+    out, r = probe_in("dsh --controlled", f"{HOME}/other/free")
+    assert r["dsmode"] == "workspace-write" and r["dskey"] == "dsh-online-key", out
+    out, r = probe_in("dsh --offline --controlled", f"{HOME}/other/free")
+    assert r["dsmode"] == "workspace-write" and r["dskey"] == "dsh-offline-key", out
+    assert "сеть offline, режим controlled" in out, out
+    # Неизвестный агент (в том числе удалённый aider) — отказ с подсказкой.
+    status, out = launch("aider", f"{HOME}/other/free")
+    assert status != 0 and "usage: agent-launcher <claude|dsh>" in out, out
+    assert_clean()
 
     # === Fail-closed (AI-SBX-6): не поднялась сеть агента — агент не стартует ===========
     machine.succeed("sysctl -w user.max_user_namespaces=0")
-    machine.succeed(f"rm -f {HOME}/other/free/stub-started-aider")
-    status, out = launch("aider", f"{HOME}/other/free")
+    machine.succeed(f"rm -f {HOME}/other/free/stub-started-dsh")
+    status, out = launch("dsh", f"{HOME}/other/free")
     machine.succeed("sysctl -w user.max_user_namespaces=15000")
     assert status != 0, f"AI-SBX-6: без пространств имён агент не запускается: {out}"
-    machine.fail(f"test -e {HOME}/other/free/stub-started-aider")
+    machine.fail(f"test -e {HOME}/other/free/stub-started-dsh")
     # Охранник сам по себе (без `agents-net run`) команду не запускает.
     machine.fail(outside("agents-net guard -- true"))
 
     # === dsh нативно (R9.18, AI-ROLE-5): окружение, политика патчем, профили не пишутся ==
     DSH_PROFILES = f"{HOME}/.local/state/agents/dsh/dsh-home/profiles"
-    as_agent(f"mkdir -p {DSH_PROFILES}/web {DSH_PROFILES}/headless")
-    # Прежний лаунчер писал свой патч с меткой — его убираем; файл интерфейса не трогаем.
-    as_agent(f"printf '%s\n' '# Сгенерировано agent-launcher (R8.6, R9.14) — правки будут перезаписаны.' '- id: llm-deepseek' > {DSH_PROFILES}/web/cordis.patch.yml")
-    as_agent(f"printf '%s\n' '- id: agent-default-model' '  config:' '    model: deepseek-v4-pro' > {DSH_PROFILES}/headless/cordis.patch.yml")
     out, r = probe_in("dsh", f"{HOME}/other/free")
-    assert "режим online" in out, out
+    assert "сеть online" in out, out
     assert r["dskey"] == "dsh-online-key", f"ключ dsh — значением в окружении, по режиму online: {out}"
     assert r["dsurl"] == "http://127.0.0.1:11501/anthropic", f"подключение окружением: {out}"
     args = machine.succeed(f"cat {HOME}/other/free/stub-args-dsh")
     assert "--patch\n${dshPolicy}\n" in args, f"политика Nix — флагом --patch из хранилища: {args}"
     assert "dsh-online-key" not in args, f"ключ не в argv: {args}"
-    machine.fail(f"test -e {DSH_PROFILES}/web/cordis.patch.yml")  # метка лаунчера — файл убран
-    assert "deepseek-v4-pro" in machine.succeed(f"cat {DSH_PROFILES}/headless/cordis.patch.yml"), "файл интерфейса сохранён"
+    machine.fail(f"test -e {DSH_PROFILES}")  # профили лаунчер не пишет (D18)
     out, r = probe_in("dsh --offline", f"{HOME}/other/free")
     assert r["dskey"] == "dsh-offline-key", f"ключ dsh по режиму offline: {out}"
     status, out = launch("dsh -- 'сделай что-нибудь'", f"{HOME}/other/free")

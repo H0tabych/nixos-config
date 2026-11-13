@@ -58,7 +58,7 @@ sudo systemctl start llm-gateway-$USER
 Откат: остановить юнит и вернуть файл на место.
 
 **Ключи доступа** — по паре «агент × режим»: файлы `/run/llm-gateway/<имя>/<агент>-<режим>`
-(`dsh-online`, `dsh-offline`, `aider-online`, `aider-offline`), права `root:<группа> 0440`,
+(`dsh-online`, `dsh-offline`; у агента по подписке ключа нет), права `root:<группа> 0440`,
 создаются при старте службы, исчезают при остановке. Постоянные: хранятся в состоянии службы и
 не меняются при перезапуске. Ротация одного ключа (root): удалить
 `/var/lib/private/llm-gateway-<имя>/keys/<агент>-<режим>` и перезапустить службу; запущенные
@@ -70,7 +70,7 @@ sudo systemctl start llm-gateway-$USER
 ```sh
 . ~/.config/machine.d/ai-gateway-env
 curl -s "$AI_GATEWAY_URL/v1/chat/completions" \
-  -H "Authorization: Bearer $(cat "$AI_GATEWAY_KEYS_DIR/aider-offline")" \
+  -H "Authorization: Bearer $(cat "$AI_GATEWAY_KEYS_DIR/dsh-offline")" \
   -H 'Content-Type: application/json' \
   -d '{"model":"local-fast","messages":[{"role":"user","content":"Say ok"}],"max_tokens":8}'
 ```
@@ -295,9 +295,17 @@ R9.20**): на машине проверена 2026-11-07, результаты 
 | прокси → `127.0.0.1:11434`, `localhost:11434`, `127.0.0.1:22` | 000 | 503 (отказ правила `http-in`) |
 | интерфейсы / сокет демона сборки | `lo` / скрыт | `lo` / виден |
 
-Лаунчер: `aider` в обычном проекте — `online`, с `--offline` и в проекте с `.ai/offline` —
-`offline`, `--online` перекрывает маркер; `claude --offline` отказывает; корни из файла
-(`agents-net mode`) дают `offline` под корнем. Веб-интерфейс `dsh` с хоста: `http://127.0.0.1:11600/`
+Лаунчер: `dsh` в обычном проекте — `online`, с `--offline` и под корнем `cloud = "deny"` из
+`roots.toml` (`agents-net mode`) — `offline`; флага `--online` и маркера `.ai/offline` больше
+нет (ADR-47); `claude --offline` отказывает. Режим агента — `--controlled` (подтверждение правок
+и команд; `claude` — `--permission-mode manual`, `dsh` — `DSH_PERMISSION_MODE=workspace-write`),
+по умолчанию `autonomous`; `aider` удалён (R9.21).
+
+**Фоновые сессии Claude (`claude --bg`, AI-SBX-13, AI-A20).** Из песочницы лаунчера они не поддерживаются
+между запусками: `~/.claude/daemon*` подменены каталогом состояния (`~/.local/state/agents/claude/private/`),
+супервизор внутри изолирован и умирает вместе с запуском. Хостовые `claude agents`/`stop`/`rm` их не видят.
+Если в `claude daemon status` на хосте после старых опытов видна «чужая» запись — это файлы до R9.21;
+остановите сессию (`stop <id>`, `rm <id>`) бинарником claude из `agent-launcher`. Веб-интерфейс `dsh` с хоста: `http://127.0.0.1:11600/`
 отвечает 401 без токена и 303 с токеном; после остановки порт закрыт, мостов и каталога
 `agents-bridge.*` нет. direnv: в `online`
 окружение проекта собирается через демон (после `NIX_REMOTE=daemon`), в `offline` — нет (см. выше).

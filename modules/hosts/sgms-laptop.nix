@@ -138,10 +138,6 @@ in
         ];
         nativeProvider = "primary";
       };
-      aider = {
-        cloudRoles = [ "cost-autonomous" ];
-        localRoles = [ "local-chat" ];
-      };
     };
 
     my.tunnel = {
