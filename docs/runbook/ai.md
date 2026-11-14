@@ -81,34 +81,25 @@ curl -s "$AI_GATEWAY_URL/v1/chat/completions" \
 смотрите журнал шлюза.
 
 **Бюджет шлюза: `402 QUOTA` «Budget exceeded: vk <агент>-online budget exceeded: X >= Y»** (AI-GW-6,
-ADR-49). Это наш лимит на ключ (`my.ai.gateway.budget` в `modules/hosts/<хост>.nix`), а не баланс
-провайдера: запросы стоят, пока не начнётся новый период (`resetDuration` от момента создания бюджета)
-или пока лимит не поднят. Расход шлюз считает по ценам из политики хоста
-(`my.ai.gateway.providers.<id>.prices`). Посмотреть счётчик (root, только чтение):
+ADR-49). Это лимит шлюза на ключ (`my.ai.gateway.budget` в `modules/hosts/<хост>.nix`), а не баланс
+провайдера. На `sgms-laptop` лимита нет (решение владельца 2026-11-14): расход контролируется у
+провайдера, раздел бюджетов в конфиге шлюза пустой. Стоимость запросов шлюз всё равно пишет в журнал по
+ценам из `my.ai.gateway.providers.<id>.prices` (у DeepSeek в политике тариф вне пика; пиковые часы
+учитываются вдвое дешевле). Если после применения лимит остался в базе (старый `402`), посмотреть и
+удалить его вручную (root):
 
 ```sh
-sudo nix shell nixpkgs#sqlite -c sqlite3 -readonly \
-  /var/lib/private/llm-gateway-$USER/config.db \
-  'select id, max_limit, current_usage, reset_duration, last_reset from governance_budgets;'
-```
-
-Счётчик не совпадает со списаниями провайдера — сначала сверить цены в политике хоста со страницей
-провайдера (у DeepSeek тариф зависит от часа: в политике тариф вне пика, пиковые часы учитываются вдвое
-дешевле — так и задумано). Поменять цены или лимит — правка хоста и применение по OPS-3. Уже насчитанное
-за текущий период шлюз не пересчитывает; поправка — разово, вручную, по сумме, которую провайдер
-реально списал за период (например, после смены цен в R9.26 — около 5.19 вместо 10.0033):
-
-```sh
+sudo nix shell nixpkgs#sqlite -c sqlite3 -readonly /var/lib/private/llm-gateway-$USER/config.db \
+  'select id, max_limit, current_usage, reset_duration from governance_budgets;'
 sudo systemctl stop llm-gateway-$USER
 sudo cp /var/lib/private/llm-gateway-$USER/config.db /var/lib/private/llm-gateway-$USER/config.db.bak
 sudo nix shell nixpkgs#sqlite -c sqlite3 /var/lib/private/llm-gateway-$USER/config.db \
-  "update governance_budgets set current_usage = 5.19 where id = 'budget-dsh-online';"
+  "delete from governance_budgets where id = 'budget-dsh-online';"
 sudo systemctl start llm-gateway-$USER
 ```
 
-Откат: остановить службу и вернуть `config.db.bak`. Имена таблицы и полей — по бинарнику Bifrost
-2.1.0 (`governance_budgets`, `current_usage`); перед правкой убедиться первой командой, что строка
-`budget-dsh-online` на месте.
+Откат: остановить службу и вернуть `config.db.bak`. Имена таблицы и полей — по бинарнику Bifrost 2.1.0.
+Вернуть лимит — задать `my.ai.gateway.budget.maxUSD` и применить по OPS-3.
 
 ### Песочница агентов
 

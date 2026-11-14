@@ -172,7 +172,24 @@ let
         ).start()
     threading.Event().wait()
   '';
+  # AI-GW-6 — MAY (решение владельца 2026-11-14): без лимита раздел бюджетов пуст (и снимает
+  # прежние лимиты в базе), цены по-прежнему подаются шлюзу.
+  noBudget = buildConfig {
+    inherit providers cloudRoles agents;
+    budget = {
+      maxUSD = null;
+      resetDuration = "1M";
+    };
+    inference = {
+      host = "127.0.0.1";
+      port = 9001;
+    };
+    localRoles.local-chat = "local-model";
+    pricingUrl = "file://${pricingFile}";
+  };
 in
+assert noBudget.governance.budgets == [ ];
+assert noBudget.framework.pricing.pricing_url == "file://${pricingFile}";
 pkgs.testers.runNixOSTest {
   name = "llm-gateway";
 

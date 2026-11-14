@@ -134,14 +134,11 @@ in
           message = "my.ai.gateway.providers.*.nativeModels не должны совпадать с именами ролей (сквозной маршрут и роли различаются по имени модели).";
         }
         {
-          assertion = gw.cloudRoles == { } || gw.budget.maxUSD != null;
-          message = "Облачным ролям нужен лимит расходов my.ai.gateway.budget.maxUSD (AI-GW-6).";
-        }
-        {
-          assertion = unpriced == [ ];
+          # Цена нужна там, где по ней считается лимит; без лимита — только журнал стоимости.
+          assertion = gw.budget.maxUSD == null || unpriced == [ ];
           message =
             "my.ai.gateway.providers.<id>.prices: нет цены у облачных моделей (AI-GW-6, ADR-49) — "
-            + "бюджет их не считал бы: ${lib.concatStringsSep ", " unpriced}";
+            + "лимит их не считал бы: ${lib.concatStringsSep ", " unpriced}";
         }
       ];
 

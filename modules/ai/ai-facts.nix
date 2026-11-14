@@ -129,7 +129,7 @@ _: {
             maxUSD = lib.mkOption {
               type = lib.types.nullOr lib.types.numbers.positive;
               default = null;
-              description = "Лимит расходов на каждый ключ доступа, имеющий облачные права, USD за период (AI-GW-6). null допустим только без облачных ролей — иначе сборка не пройдёт.";
+              description = "Лимит расходов на каждый ключ доступа, имеющий облачные права, USD за период (AI-GW-6, MAY). null — без лимита шлюза: расход контролирует владелец у провайдера (решение 2026-11-14).";
             };
             resetDuration = lib.mkOption {
               type = lib.types.str;

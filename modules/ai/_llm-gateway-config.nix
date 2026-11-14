@@ -19,7 +19,8 @@
 #     allow_all_providers = false, провайдеры перечислены в provider_configs, инструменты
 #     (mcp_configs) пусты — по умолчанию запрещено всё; ключ `offline` получает только
 #     локальный провайдер;
-#   - governance.budgets[] — лимит расходов на каждый ключ с облачными правами (AI-GW-6);
+#   - governance.budgets[] — лимит расходов на каждый ключ с облачными правами (AI-GW-6, если
+#     задан `budget.maxUSD`); раздел есть всегда, пустой — снимает прежние лимиты из базы;
 #   - governance.routing_rules[] — индирекция «роль → провайдер + модель» (AI-GW-2) и
 #     сквозной маршрут собственных моделей провайдера (AI-ROLE-5): условие по имени
 #     модели, а `model` в цели не задан — берётся из запроса, без подмены.
@@ -184,7 +185,7 @@ let
   budgets = lib.concatLists (
     lib.mapAttrsToList (
       name: agent:
-      lib.optional (agentCloud agent != { }) {
+      lib.optional (budget.maxUSD != null && agentCloud agent != { }) {
         id = "budget-${keyId name "online"}";
         max_limit = budget.maxUSD;
         reset_duration = budget.resetDuration;
