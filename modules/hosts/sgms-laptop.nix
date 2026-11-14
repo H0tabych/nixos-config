@@ -153,32 +153,33 @@ in
           "strong-autonomous"
         ];
         nativeProvider = "primary";
+        # Те же инструменты, что у claude (AI-A16): плагин `dsh-mcp-client`, вход `gateway` из
+        # списка dotfiles; доступ — ключом `dsh-online`.
+        mcp = [
+          "jira"
+          "web-search"
+        ];
       };
       # Агент по подписке (AI-GW-11): ключ шлюза нужен только для инструментов MCP-шлюза
-      # (AI-GW-14); модель шлюз ему не отдаёт — ролей нет. dsh инструменты не получает: формат
-      # подключения MCP у DeepSeek Harness не проверен (AI-A16, ПРОВЕРИТЬ).
+      # (AI-GW-14); модель шлюз ему не отдаёт — ролей нет.
       claude.mcp = [
-        "github"
         "jira"
         "web-search"
       ];
     };
 
-    # MCP-шлюз (AI-GW-14, R9.23): серверы с секретом и удалённые. Токены — в секретах
-    # пользователя (`ai.gateway.mcpToken.<id>`), выдавать минимальные права. `jira` и
-    # `web-search` определяют фичи mcp-jira и web-search-searxng (пакет и обёртка), здесь —
-    # адрес трекера и состав доступа.
-    my.ai.gateway.mcp = {
-      github = {
-        type = "http";
-        url = "https://api.githubcopilot.com/mcp/";
-        # Только чтение: заголовок режима сервера + токен с правами «только чтение»
-        # (ПРОВЕРИТЬ: заголовок `X-MCP-Readonly` по документации удалённого сервера).
-        headers.X-MCP-Readonly = "true";
-        secret = true;
-      };
-      # ПРОВЕРИТЬ: адрес внутреннего трекера (раньше — JIRA_URL в ~/.claude.json); заменить до сборки.
-      jira.env.JIRA_URL = "https://jira.example.invalid";
+    # MCP-шлюз (AI-GW-14, R9.23): серверы с секретом и удалённые. `jira` и `web-search`
+    # определяют фичи mcp-jira и web-search-searxng (пакет и обёртка), здесь — адрес трекера и
+    # источник токена. Токен Jira — файл в домашнем каталоге (решение владельца 2026-11-14: не в
+    # sops); файл виден агентам с доступом к $HOME, поэтому токен выдавать с минимальными правами.
+    # Нет файла — сервер вычёркивается (AI-GW-9). `github` (удалённый сервер, только чтение:
+    # заголовок `X-MCP-Readonly` + токен «только чтение») не заведён: токена в
+    # ~/Documents/job/ControlSystems/projects нет. Добавить: `github = { type = "http"; url =
+    # "https://api.githubcopilot.com/mcp/"; headers.X-MCP-Readonly = "true"; secret = true;
+    # secretHomeFile = "<файл токена>"; };` и `github` в `agents.<агент>.mcp`.
+    my.ai.gateway.mcp.jira = {
+      env.JIRA_URL = "https://jira.controlsystems.ru";
+      secretHomeFile = "Documents/job/ControlSystems/projects/token_jira.txt";
     };
 
     my.tunnel = {

@@ -95,6 +95,21 @@ in
         proxyUrl = if proxyUrl == "" then null else proxyUrl;
         pricingUrl = "file://${pricingFile}";
       };
+      # Источник секрета сервера MCP-шлюза: файл в домашнем каталоге пользователя (решение
+      # владельца) либо sops. Копирует в состояние службы root перед стартом (_llm-gateway-service).
+      mcpSrc =
+        user:
+        map (
+          s:
+          s
+          // {
+            src =
+              if s.homeFile != null then
+                "${config.users.users.${user}.home}/${s.homeFile}"
+              else
+                config.sops.secrets."ai.gateway.mcpToken.${s.id}.${user}".path;
+          }
+        ) mcpBuild.secrets;
       mkService =
         user:
         import ./_llm-gateway-service.nix {
@@ -110,8 +125,7 @@ in
           group = config.users.users.${user}.group;
           port = gw.portBase + (config.users.users.${user}.uid - 1000);
           credPath = id: config.sops.secrets."ai.gateway.providerKey.${id}.${user}".path;
-          mcpSecrets = mcpBuild.secrets;
-          mcpCredPath = id: config.sops.secrets."ai.gateway.mcpToken.${id}.${user}".path;
+          mcpSecrets = mcpSrc user;
         };
     in
     {
@@ -192,7 +206,7 @@ in
               mode = "0400";
               restartUnits = [ "${unitOf user}.service" ];
             }
-          ) mcpBuild.secrets
+          ) (lib.filter (s: s.homeFile == null) mcpBuild.secrets)
         ) mlUsers
       );
 

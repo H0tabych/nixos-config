@@ -29,8 +29,7 @@
   providers, # my.ai.gateway.providers: id → { type, … } (имя в конфиге шлюза — тип)
   keyIds, # id ключей доступа: "<агент>-<режим>"
   credPath, # id провайдера → путь к файлу секрета
-  mcpSecrets ? [ ], # серверы MCP-шлюза с секретом: [ { id, name } ] (AI-GW-14)
-  mcpCredPath ? (_: null), # id сервера MCP → путь к файлу секрета
+  mcpSecrets ? [ ], # серверы MCP-шлюза с секретом: [ { id, name, src } ], src — файл секрета (AI-GW-14)
   extraEnvironment ? { },
 }:
 let
@@ -122,7 +121,7 @@ let
     # Серверы MCP-шлюза без секрета вычёркиваются так же, как провайдеры (AI-GW-9, AI-A14).
     deadmcp=()
     ${lib.concatMapStringsSep "\n" (v: ''
-      cred="$CREDENTIALS_DIRECTORY/mcp-${v.id}"
+      cred="$state/mcp-secrets/${v.id}"
       if [ -s "$cred" ] && grep -q '[^[:space:]]' "$cred"; then
         args+=(--rawfile ${v.var} "$cred")
       else
@@ -136,6 +135,22 @@ let
     jq "''${args[@]}" --argjson dead "$deadjson" --argjson deadmcp "$deadmcpjson" -f ${filter} ${templateFile} \
       > "$state/config.json.new"
     mv "$state/config.json.new" "$state/config.json"
+  '';
+
+  # От root («+»): секреты серверов MCP-шлюза — в `mcp-secrets/<id>` состояния службы (0400, её
+  # динамический пользователь). Источник — файл sops или файл в домашнем каталоге пользователя;
+  # нет файла — копии нет, сервер вычёркивается (AI-GW-9, AI-GW-14), юнит не падает.
+  mcpSync = pkgs.writeShellScript "${unit}-mcp-sync" ''
+    set -eu
+    export PATH=${bins}
+    d="$STATE_DIRECTORY/mcp-secrets"
+    uid=$(stat -L -c %u "$STATE_DIRECTORY")
+    rm -rf "$d"
+    install -d -m 0700 -o "$uid" "$d"
+    ${lib.concatMapStringsSep "\n" (
+      s:
+      "[ -s ${lib.escapeShellArg s.src} ] && install -m 0400 -o \"$uid\" ${lib.escapeShellArg s.src} \"$d/${s.id}\" || true"
+    ) mcpSecrets}
   '';
 
   # От root («+»): копии ключей доступа — пользователю, больше ничего.
@@ -170,10 +185,9 @@ in
     DynamicUser = true;
     StateDirectory = unit;
     StateDirectoryMode = "0700";
-    LoadCredential =
-      map (id: "provider-${id}:${credPath id}") providerIds
-      ++ map (s: "mcp-${s.id}:${mcpCredPath s.id}") mcpSecrets;
+    LoadCredential = map (id: "provider-${id}:${credPath id}") providerIds;
     ExecStartPre = [
+      "+${mcpSync}"
       "${prepare}"
       "+${publish}"
     ];

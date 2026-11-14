@@ -212,6 +212,9 @@ _: {
                   secret =
                     opt lib.types.bool false
                       "Серверу нужен секрет `ai.gateway.mcpToken.<id>` (SEC-3). Нет значения — сервер вычёркивается, юнит не падает (AI-GW-9).";
+                  secretHomeFile =
+                    opt (lib.types.nullOr lib.types.str) null
+                      "Путь от домашнего каталога пользователя: секрет — из этого файла вместо sops (читает root; файл виден агенту с доступом к $HOME). Нет файла — сервер вычёркивается.";
                   secretEnv =
                     opt (lib.types.nullOr lib.types.str) null
                       "stdio: имя переменной окружения, в которую обёртка кладёт секрет.";

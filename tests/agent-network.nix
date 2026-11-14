@@ -433,6 +433,10 @@ pkgs.testers.runNixOSTest {
 
     # === dsh нативно (R9.18, AI-ROLE-5): окружение, политика патчем, профили не пишутся ==
     DSH_PROFILES = f"{HOME}/.local/state/agents/dsh/dsh-home/profiles"
+    # Общий список MCP (R9.23): патчи из dotfiles/ai/generated/dsh — локальные серверы всегда, вход
+    # шлюза — когда у лаунчера есть адрес и ключ.
+    MCPD = f"{HOME}/.config/ai/generated/dsh"
+    as_agent(f"mkdir -p {MCPD} && echo '[]' > {MCPD}/local.cordis.yml && echo '[]' > {MCPD}/gateway.cordis.yml")
     out, r = probe_in("dsh", f"{HOME}/other/free")
     assert "сеть online" in out, out
     assert r["dskey"] == "dsh-online-key", f"ключ dsh — значением в окружении, по режиму online: {out}"
@@ -440,6 +444,8 @@ pkgs.testers.runNixOSTest {
     args = machine.succeed(f"cat {HOME}/other/free/stub-args-dsh")
     assert "--patch\n${dshPolicy}\n" in args, f"политика Nix — флагом --patch из хранилища: {args}"
     assert "dsh-online-key" not in args, f"ключ не в argv: {args}"
+    assert r["mcpkey"] == "dsh-online-key" and r["mcpurl"] == "http://127.0.0.1:11501/mcp", f"вход MCP-шлюза: {out}"
+    assert f"--patch\n{MCPD}/local.cordis.yml\n" in args and f"--patch\n{MCPD}/gateway.cordis.yml\n" in args, args
     machine.fail(f"test -e {DSH_PROFILES}")  # профили лаунчер не пишет (D18)
     out, r = probe_in("dsh --offline", f"{HOME}/other/free")
     assert r["dskey"] == "dsh-offline-key", f"ключ dsh по режиму offline: {out}"
@@ -450,6 +456,9 @@ pkgs.testers.runNixOSTest {
     machine.succeed("mv /run/llm-gateway/agent/dsh-online /run/llm-gateway/agent/dsh-online.off")
     out, r = probe_in("dsh", f"{HOME}/other/free")
     assert r["dskey"] == "" and r["dsurl"] == "", f"без ключа окружение подключения пусто: {out}"
+    assert r["mcpkey"] == "" and r["mcpurl"] == "", f"без ключа входа MCP-шлюза нет: {out}"
+    args = machine.succeed(f"cat {HOME}/other/free/stub-args-dsh")
+    assert "local.cordis.yml" in args and "gateway.cordis.yml" not in args, f"патч шлюза только при ключе: {args}"
     machine.succeed("mv /run/llm-gateway/agent/dsh-online.off /run/llm-gateway/agent/dsh-online")
 
     # === dsh: веб-интерфейс внутри пространства сети открывается с хоста (публикация) ==

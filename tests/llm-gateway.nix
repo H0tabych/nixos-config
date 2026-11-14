@@ -82,6 +82,8 @@ let
         "fake-http"
         "fake-stdio"
         "empty-secret"
+        "fake-file"
+        "missing-file"
       ];
     };
     # Свой бюджет для проверки учёта по ценам (AI-GW-6, ADR-49) — не трогает ключи dsh.
@@ -108,6 +110,7 @@ let
           secretEnv = null;
           secretHeader = "Authorization";
           secretPrefix = "Bearer ";
+          secretHomeFile = null;
         }
         // s
       )
@@ -123,6 +126,22 @@ let
           env.FAKE_PLAIN = "plain-value";
           secret = true;
           secretEnv = "FAKE_SECRET";
+        };
+        # Секрет — файл в домашнем каталоге пользователя (решение владельца), а не sops.
+        fake-file = {
+          type = "stdio";
+          command = "${fakeMcpStdio}";
+          secret = true;
+          secretEnv = "FAKE_SECRET";
+          secretHomeFile = "mcp-token-file";
+        };
+        # Файла нет — сервер вычёркивается, служба стартует (AI-GW-9).
+        missing-file = {
+          type = "stdio";
+          command = "${fakeMcpStdio}";
+          secret = true;
+          secretEnv = "FAKE_SECRET";
+          secretHomeFile = "no-such-file";
         };
         empty-secret = {
           type = "stdio";
@@ -175,8 +194,13 @@ let
       "mcpagent-offline"
     ];
     credPath = id: "/etc/test-secrets/provider-${id}";
-    mcpSecrets = mcpBuild.secrets;
-    mcpCredPath = id: "/etc/test-secrets/mcp-${id}";
+    mcpSecrets = map (
+      s:
+      s
+      // {
+        src = if s.homeFile != null then "/home/alice/${s.homeFile}" else "/etc/test-secrets/mcp-${s.id}";
+      }
+    ) mcpBuild.secrets;
   };
 
   fakeMcpStdio = pkgs.writers.writePython3 "fake-mcp-stdio" { doCheck = false; } ''
@@ -376,6 +400,8 @@ pkgs.testers.runNixOSTest {
         mode = "0400";
       };
     };
+
+    systemd.tmpfiles.rules = [ "f /home/alice/mcp-token-file 0600 alice alice - file-secret" ];
 
     systemd.services.fake-mcp-http = {
       wantedBy = [ "multi-user.target" ];
@@ -596,6 +622,8 @@ pkgs.testers.runNixOSTest {
     assert any(n.startswith("fake_http") for n in names), names
     assert any(n.startswith("fake_stdio") for n in names), names
     assert not any(n.startswith("empty_secret") for n in names), f"сервер без секрета вычеркнут: {names}"
+    assert not any(n.startswith("missing_file") for n in names), f"сервер без файла секрета вычеркнут: {names}"
+    assert any(n.startswith("fake_file") for n in names), f"сервер с секретом из домашнего файла: {names}"
     # Остальные ключи инструментов не видят (по умолчанию запрещено всё; offline — без инструментов).
     for other in ["mcpagent-offline", "dsh-online", "dsh-offline", "localonly-online"]:
         code, body = mcp("tools/list", key(other))
@@ -620,6 +648,11 @@ pkgs.testers.runNixOSTest {
     assert seen["secret"] == "fake-stdio-secret" and seen["plain"] == "plain-value", seen
     assert seen["home"].startswith("/var/lib/"), seen
 
+    fid = [n for n in names if n.startswith("fake_file")][0]
+    code, body = mcp("tools/call", key("mcpagent-online"), {"name": fid, "arguments": {}})
+    assert code == 200, (code, body)
+    assert json.loads(body["result"]["content"][0]["text"])["secret"] == "file-secret", body
+
     # http: токен сервера подставлен службой в заголовок; у агента его нет.
     hid = [n for n in names if n.startswith("fake_http")][0]
     code, body = mcp("tools/call", key("mcpagent-online"), {"name": hid, "arguments": {}})
@@ -627,10 +660,12 @@ pkgs.testers.runNixOSTest {
     assert "Bearer fake-mcp-token" in machine.succeed("cat /var/log/fake-mcp-http.log"), "заголовок Authorization"
     machine.fail(f"grep -rE 'fake-mcp-token|fake-stdio-secret' {KEYS}")
     cfg = json.loads(machine.succeed("cat /var/lib/private/llm-gateway-alice/config.json"))
-    assert "empty_secret" not in [c["name"] for c in cfg["mcp"]["client_configs"]], "клиент без секрета не вычеркнут"
+    assert not {"empty_secret", "missing_file"} & {c["name"] for c in cfg["mcp"]["client_configs"]}, "клиент без секрета не вычеркнут"
     machine.succeed("systemctl is-active llm-gateway-alice.service")
     # Секрет stdio-сервера не попал ни в конфиг, ни в argv процессов.
-    assert "fake-stdio-secret" not in json.dumps(cfg), "секрет stdio-сервера в конфиге шлюза"
+    assert "fake-stdio-secret" not in json.dumps(cfg) and "file-secret" not in json.dumps(cfg), "секрет stdio-сервера в конфиге шлюза"
+    # Копии секретов в состоянии службы недоступны пользователю (AI-A6).
+    machine.fail("su alice -c 'ls /var/lib/private/llm-gateway-alice/mcp-secrets'")
     machine.fail("ps -eo args | grep -F fake-stdio-secret | grep -v grep")
 
     # --- Постоянство ключей и возврат после перезапуска.

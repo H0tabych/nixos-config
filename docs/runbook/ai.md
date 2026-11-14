@@ -532,17 +532,28 @@ AI-A4 (игра) и проверка CUDA без GSP (A7).
   `NPM_TOKEN`, …) пустыми в `url`/`headers`.
 - **Добавить сервер шлюза:** запись в `my.ai.gateway.mcp.<id>` (хост или фича-реализация), id — в
   `my.ai.gateway.agents.<агент>.mcp`, токен — `just sops-edit secrets/users/<имя>.yaml`
-  (`ai.gateway.mcpToken.<id>`), затем `just build` → `nvd diff` → `just test` → `just boot`.
+  (`ai.gateway.mcpToken.<id>`; либо `secretHomeFile` — файл токена от домашнего каталога), затем `just build` → `nvd diff` → `just test` → `just boot`.
   Сервер без токена вычёркивается, юнит не падает (в журнале: «нет секрета сервера MCP»).
-- **Перевыпуск токенов (D19):** старые токены `github` и `jira` лежали открытым текстом в
-  `~/.claude.json` и в снимках `home` — отозвать у поставщика, выпустить новые (GitHub — права
-  «только чтение»; Jira — личный токен), внести через `sops-edit`; записи `github`, `jira`,
-  `playwright` удалить из `~/.claude.json`.
+- **Токены (D19):** старые токены лежали открытым текстом в `~/.claude.json` и в снимках `home`.
+  Токен Jira берётся из файла каталога проектов (см. ниже) — если он тот же, что был в
+  `~/.claude.json`, по желанию перевыпустить; GitHub-токен — после перевыпуска (права «только
+  чтение»). Записи `github`, `jira`, `playwright` удалить из `~/.claude.json` после проверки.
 - **Поиск:** SearXNG на `127.0.0.1:8888`, `curl 'http://127.0.0.1:8888/search?q=test&format=json'`.
   Журнал: `journalctl -u searx`. Секрет службы — `/var/lib/searx-secret/env` (создаёт юнит
   `searx-secret`, при потере создаётся заново).
-- **Открытое (ПРОВЕРИТЬ):** (1) у DeepSeek Harness не проверен формат подключения MCP — `dsh-*` ключи
-  инструментов не имеют (отступление от AI-A16); (2) попадают ли `AI_MCP_URL`/`AI_MCP_KEY` в фоновые
+- **DeepSeek Harness** получает тот же список: плагин `@deepseek-ai/dsh-mcp-client`, патчи
+  `~/.config/ai/generated/dsh/local.cordis.yml` (локальные серверы) и `gateway.cordis.yml` (вход
+  шлюза, адрес и ключ из `AI_MCP_URL`/`AI_MCP_KEY`) подключает лаунчер флагами `--patch`; права на
+  инструменты — у ключа `dsh-online` (`my.ai.gateway.agents.dsh.mcp`). Инструменты видны как
+  `mcp__<сервер>__<инструмент>`.
+- **Токен Jira** — файл `~/Documents/job/ControlSystems/projects/token_jira.txt` (не sops, решение
+  владельца): `my.ai.gateway.mcp.jira.secretHomeFile`. Перед стартом шлюза root копирует его в
+  состояние службы; нет файла — сервер вычёркивается (в журнале «нет секрета сервера MCP»), шлюз
+  работает. Файл виден агентам с доступом к `$HOME` (Claude) — токен выпускать с минимальными
+  правами. Другие токены каталога (`gitlab`, `confluence`, `p3-ai`) не подключены.
+- **GitHub** не заведён: токена нет. Добавить — комментарий в `modules/hosts/sgms-laptop.nix`.
+- **Открытое (ПРОВЕРИТЬ):** (1) живой вызов инструмента из `dsh` (плагин `dsh-mcp-client` проверен
+  только `dsh --dump-config`); (2) попадают ли `AI_MCP_URL`/`AI_MCP_KEY` в фоновые
   сессии Claude (`claude agents`) и в `--resume`: окружение даёт окно, поднявшее супервизор; (3)
   достижимость адреса Jira (внутренняя сеть за корпоративным VPN) из юнита шлюза: M2 — маршруты хоста,
   M1 — прокси корпоративные сети не покрывает; (4) заголовок `X-MCP-Readonly` удалённого сервера

@@ -10,13 +10,14 @@
 # Имя клиента — без дефисов (ValidateMCPClientName в core/mcp/utils.go, ПРОВЕРЕНО по исходникам
 # 2026-11-14): дефис нейтрального id заменяется подчёркиванием.
 #
-# Секреты. http: в заголовке метка `@MCP_<id>@` — её подставляет служба (jq), как ключи
-# провайдеров. stdio: `envs` Bifrost принимает лишь имена (из окружения процесса) или
-# `ИМЯ=значение`, метки туда не попадают; поэтому обёртка читает секрет из учётных данных
-# службы (`$CREDENTIALS_DIRECTORY/mcp-<id>`, LoadCredential) и кладёт его в переменную сервера
-# сама. Дочерний процесс наследует окружение шлюза (mcp-go: `os.Environ()` + `envs`, ПРОВЕРИТЬ
-# ВМ-тестом) — отсюда CREDENTIALS_DIRECTORY и STATE_DIRECTORY. Значение секрета в argv и в
-# конфиге не попадает.
+# Секреты: root перед стартом копирует файл секрета (sops пользователя либо файл в его домашнем
+# каталоге, `secretHomeFile`) в `mcp-secrets/<id>` состояния службы. Нет файла или он пуст —
+# сервер вычёркивается, юнит не падает (AI-GW-9). http: в заголовке метка `@MCP_<id>@` — её
+# подставляет служба (jq), как ключи провайдеров. stdio: `envs` Bifrost принимает лишь имена
+# (из окружения процесса) или `ИМЯ=значение`, метки туда не попадают; поэтому обёртка читает
+# секрет из `mcp-secrets/<id>` и кладёт его в переменную сервера сама. Дочерний процесс
+# наследует окружение шлюза (mcp-go: `os.Environ()` + `envs`, ПРОВЕРЕНО ВМ-тестом) — отсюда
+# STATE_DIRECTORY. Значение секрета в argv и в конфиге не попадает.
 # AI-GW-14: ключ `offline` инструментов не получает; `online` — только перечисленные агенту.
 {
   lib,
@@ -30,7 +31,8 @@ let
   clientName = lib.replaceStrings [ "-" ] [ "_" ];
 
   # stdio-сервер всегда запускается обёрткой: свой HOME в состоянии службы (DynamicUser: каталога
-  # пользователя нет), несекретное окружение, секрет из учётных данных.
+  # пользователя нет), несекретное окружение, секрет из каталога секретов службы (его заполняет
+  # root перед стартом, `mcp-secrets/<id>` в состоянии службы).
   wrapper =
     id: s:
     pkgs.writeShellScript "mcp-${id}" ''
@@ -41,7 +43,7 @@ let
         lib.mapAttrsToList (k: v: "export ${k}=${lib.escapeShellArg v}") s.env
       )}
       ${lib.optionalString (s.secret && s.secretEnv != null) ''
-        ${s.secretEnv}=$(cat "''${CREDENTIALS_DIRECTORY:?}/mcp-${id}")
+        ${s.secretEnv}=$(cat "''${STATE_DIRECTORY:?}/mcp-secrets/${id}")
         export ${s.secretEnv}
       ''}
       exec ${lib.escapeShellArg s.command} "$@"
@@ -85,9 +87,10 @@ in
   };
   # Серверы с секретом: службе нужны учётные данные и метки подстановки; `name` — имя клиента
   # в конфиге шлюза (для вычёркивания клиента без секрета).
-  secrets = lib.mapAttrsToList (id: _: {
+  secrets = lib.mapAttrsToList (id: s: {
     inherit id;
     name = clientName id;
+    homeFile = s.secretHomeFile; # null — секрет из sops пользователя
   }) (lib.filterAttrs (_: s: s.secret) policy);
   # Права ключа `<агент>-<режим>` на инструменты (AI-GW-14).
   keys =
