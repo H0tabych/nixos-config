@@ -44,8 +44,9 @@
   providers, # my.ai.gateway.providers: id → { type, nativeModels, baseUrl }
   agents, # my.ai.gateway.agents: агент → { cloudRoles, localRoles, nativeProvider }
   budget, # my.ai.gateway.budget: { maxUSD, resetDuration }
-  frameworkOverride ? { }, # добавка к корню конфига (тесты без сети: справочники цен)
+  frameworkOverride ? { }, # добавка к конфигу, сливается рекурсивно (тесты без сети: параметры моделей)
   proxyUrl ? null, # адрес HTTP-входа туннеля (режим M1, NET-10); null — прокси не нужен
+  pricingUrl ? null, # file:// справочника цен из политики хоста (AI-GW-6, ADR-49); строит владелец
 }:
 let
   # Имя провайдера локальных ролей — наше, не встроенное в шлюз (AI-A13).
@@ -192,50 +193,52 @@ let
     ) agents
   );
 in
-frameworkOverride
-// {
-  "$schema" = "https://www.getbifrost.ai/schema";
-  # По умолчанию ("split") config.json только домешивается к sqlite-базе в состоянии;
-  # здесь единственный источник правды — Nix/sops, поэтому присутствующие секции
-  # авторитетны при каждом старте.
-  source_of_truth = "config.json";
+lib.recursiveUpdate frameworkOverride (
+  lib.optionalAttrs (pricingUrl != null) { framework.pricing.pricing_url = pricingUrl; }
+  // {
+    "$schema" = "https://www.getbifrost.ai/schema";
+    # По умолчанию ("split") config.json только домешивается к sqlite-базе в состоянии;
+    # здесь единственный источник правды — Nix/sops, поэтому присутствующие секции
+    # авторитетны при каждом старте.
+    source_of_truth = "config.json";
 
-  client = {
-    enforce_auth_on_inference = true;
-    disable_content_logging = true;
-  };
+    client = {
+      enforce_auth_on_inference = true;
+      disable_content_logging = true;
+    };
 
-  providers = cloudProviders // {
-    # Без /v1 в base_url (путь дописывает базовый провайдер openai); is_key_less —
-    # ключи не нужны. ПРОВЕРЕНО живым запросом 2026-11-05 (AI-A13).
-    ${localProvider} = {
-      network_config.base_url = "http://${inference.host}:${toString inference.port}";
-      custom_provider_config = {
-        base_provider_type = "openai";
-        is_key_less = true;
-        # Только то, что обещает AI-INF-2; остальное — явный отказ шлюза, а не 404 бэкенда.
-        allowed_requests = {
-          list_models = true;
-          text_completion = true;
-          text_completion_stream = true;
-          chat_completion = true;
-          chat_completion_stream = true;
-          embedding = true;
+    providers = cloudProviders // {
+      # Без /v1 в base_url (путь дописывает базовый провайдер openai); is_key_less —
+      # ключи не нужны. ПРОВЕРЕНО живым запросом 2026-11-05 (AI-A13).
+      ${localProvider} = {
+        network_config.base_url = "http://${inference.host}:${toString inference.port}";
+        custom_provider_config = {
+          base_provider_type = "openai";
+          is_key_less = true;
+          # Только то, что обещает AI-INF-2; остальное — явный отказ шлюза, а не 404 бэкенда.
+          allowed_requests = {
+            list_models = true;
+            text_completion = true;
+            text_completion_stream = true;
+            chat_completion = true;
+            chat_completion_stream = true;
+            embedding = true;
+          };
         };
       };
     };
-  };
 
-  governance = {
-    # Аутентификация management-API (без неё — известные RCE в старых версиях);
-    # учётные данные генерирует служба (ADR-45), в sops их нет.
-    auth_config = {
-      is_enabled = true;
-      admin_username = "@ADMIN_USER@";
-      admin_password = "@ADMIN_PASS@";
+    governance = {
+      # Аутентификация management-API (без неё — известные RCE в старых версиях);
+      # учётные данные генерирует служба (ADR-45), в sops их нет.
+      auth_config = {
+        is_enabled = true;
+        admin_username = "@ADMIN_USER@";
+        admin_password = "@ADMIN_PASS@";
+      };
+      virtual_keys = virtualKeys;
+      inherit budgets;
+      routing_rules = routingRules;
     };
-    virtual_keys = virtualKeys;
-    inherit budgets;
-    routing_rules = routingRules;
-  };
-}
+  }
+)

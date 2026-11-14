@@ -6,7 +6,9 @@
 # пользователь читает лишь файлы своих ключей (_llm-gateway-service.nix). Порт —
 # portBase + (uid − 1000), uid явный (фича users, AI-GW-1).
 # Реализация — Bifrost (_llm-gateway-package.nix, Приложение P.1 AI_SUBSYSTEM.md);
-# политика хоста → шаблон конфига: _llm-gateway-config.nix.
+# политика хоста → шаблон конфига: _llm-gateway-config.nix. Цены для учёта расходов и бюджетов
+# (AI-GW-6, ADR-49) — тоже из политики хоста (`providers.<id>.prices` → _llm-gateway-pricing.nix),
+# справочник цен поставщика шлюза не скачивается (D24: в нём пиковый тариф, счёт был вдвое выше).
 # AI-CMP-4: машинный слой пользователя получает только URL и КАТАЛОГ с файлами
 # ключей — значений там нет (SEC-4/A3); файл пишется из этого nixos-модуля через
 # home-manager.users (прецедент — modules/base/users.nix), поэтому HM-части у фичи нет.
@@ -59,6 +61,20 @@ in
       proxyUrl = lib.optionalString (
         config.my.tunnel.mode == "m1"
       ) "http://${config.my.tunnel.local.http.address}:${toString config.my.tunnel.local.http.port}";
+      pricingFile = pkgs.writeText "llm-gateway-pricing.json" (
+        builtins.toJSON (import ./_llm-gateway-pricing.nix { inherit lib; } { inherit (gw) providers; })
+      );
+      # Облачные модели (роли и сквозной маршрут) — каждой нужна цена, иначе бюджет её не считает.
+      cloudModels =
+        map (r: "${r.provider}/${r.model}") (lib.attrValues gw.cloudRoles)
+        ++ lib.concatLists (lib.mapAttrsToList (id: p: map (m: "${id}/${m}") p.nativeModels) gw.providers);
+      unpriced = lib.filter (
+        pm:
+        let
+          id = lib.head (lib.splitString "/" pm);
+        in
+        lib.attrByPath [ id "prices" (lib.removePrefix "${id}/" pm) ] null gw.providers == null
+      ) (lib.unique cloudModels);
       template = buildConfig {
         inherit (gw)
           providers
@@ -69,6 +85,7 @@ in
         inherit (config.my.ai) inference;
         localRoles = config.my.ai.local;
         proxyUrl = if proxyUrl == "" then null else proxyUrl;
+        pricingUrl = "file://${pricingFile}";
       };
       mkService =
         user:
@@ -119,6 +136,12 @@ in
         {
           assertion = gw.cloudRoles == { } || gw.budget.maxUSD != null;
           message = "Облачным ролям нужен лимит расходов my.ai.gateway.budget.maxUSD (AI-GW-6).";
+        }
+        {
+          assertion = unpriced == [ ];
+          message =
+            "my.ai.gateway.providers.<id>.prices: нет цены у облачных моделей (AI-GW-6, ADR-49) — "
+            + "бюджет их не считал бы: ${lib.concatStringsSep ", " unpriced}";
         }
       ];
 

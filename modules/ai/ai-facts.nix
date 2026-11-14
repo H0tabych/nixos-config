@@ -5,7 +5,8 @@
 # modelsDir — на томе данных вне снимков и бэкапа (AI-INF-8, STO-1); backup проверяет это
 # assertion'ом, читая опцию.
 # gateway.providers/cloudRoles/agents/budget (R8.5, R9.16, ADR-45) — без значений:
-# заполняет хост (P.1), читает llm-gateway и agents-tools (через osConfig).
+# заполняет хост (P.1), читает llm-gateway и agents-tools (через osConfig). Цены моделей
+# провайдера (`providers.<id>.prices`, R9.26, ADR-49) — тоже факт хоста: по ним шлюз считает бюджеты.
 # Зависимости: —
 _: {
   flake.modules.nixos.ai-facts =
@@ -69,6 +70,25 @@ _: {
                     type = lib.types.nullOr lib.types.str;
                     default = null;
                     description = "Адрес API; null — штатный у типа. Нужен тестам (фальшивый провайдер на loopback).";
+                  };
+                  prices = lib.mkOption {
+                    type = lib.types.attrsOf (
+                      lib.types.submodule {
+                        options = lib.genAttrs [ "input" "cacheRead" "output" ] (
+                          n:
+                          lib.mkOption {
+                            type = lib.types.number;
+                            description = "Цена `${n}` (вход без кэша / вход из кэша / выход), USD за 1M токенов.";
+                          }
+                        );
+                      }
+                    );
+                    default = { };
+                    description = ''
+                      Модель → цены, по которым шлюз считает расход и бюджеты (AI-GW-6, ADR-49).
+                      Тариф — тот, что провайдер реально списывает; справочник цен реализации шлюза
+                      не используется. Облачная модель без цены бюджет не расходует — сборка не пройдёт.
+                    '';
                   };
                 };
               }

@@ -16,6 +16,13 @@ let
   buildConfig = import ../modules/ai/_llm-gateway-config.nix { inherit lib; };
   pkg = pkgs.callPackage ../modules/ai/_llm-gateway-package.nix { };
 
+  # Цены — как в политике хоста (USD за 1M токенов, ADR-49). `model-cheap` нарочно «дорогая»:
+  # $3 за токен, запрос фальшивого провайдера (1 + 1 токен) стоит $6 — бюджет $10 закрывается
+  # за пару запросов. Без цены (или если шлюз не понял справочник) расход был бы 0 и 402 не было бы.
+  price = input: output: {
+    inherit input output;
+    cacheRead = 0;
+  };
   providers = {
     primary = {
       type = "deepseek";
@@ -24,13 +31,24 @@ let
         "native-big"
         "native-small"
       ];
+      prices = {
+        model-cheap = price 3000000 3000000;
+        native-big = price 0.1 0.2;
+        native-small = price 0.1 0.2;
+      };
     };
     spare = {
       type = "openai";
       baseUrl = "http://127.0.0.1:9000";
       nativeModels = [ ];
+      prices.model-spare = price 0.1 0.2;
     };
   };
+  pricingFile = pkgs.writeText "pricing.json" (
+    builtins.toJSON (
+      import ../modules/ai/_llm-gateway-pricing.nix { inherit lib; } { inherit providers; }
+    )
+  );
   cloudRoles = {
     cost-autonomous = {
       provider = "primary";
@@ -55,6 +73,12 @@ let
       localRoles = [ "local-chat" ];
       nativeProvider = null;
     };
+    # Свой бюджет для проверки учёта по ценам (AI-GW-6, ADR-49) — не трогает ключи dsh.
+    pricetest = {
+      cloudRoles = [ "cost-autonomous" ];
+      localRoles = [ ];
+      nativeProvider = null;
+    };
   };
   template = buildConfig {
     inherit providers cloudRoles agents;
@@ -67,12 +91,10 @@ let
       port = 9001;
     };
     localRoles.local-chat = "local-model";
-    # ВМ без сети: справочники цен и параметров моделей берутся из пустых файлов
-    # (иначе шлюз падает при первом старте — загрузка с getbifrost.ai).
-    frameworkOverride.framework.pricing = {
-      pricing_url = "file://${pkgs.writeText "pricing.json" "{}"}";
-      model_parameters_url = "file://${pkgs.writeText "model-params.json" "{}"}";
-    };
+    # Справочник цен — тот же генератор, что у хоста (ADR-49). ВМ без сети: справочник
+    # параметров моделей — из пустого файла (иначе первый старт грузит его с getbifrost.ai).
+    pricingUrl = "file://${pricingFile}";
+    frameworkOverride.framework.pricing.model_parameters_url = "file://${pkgs.writeText "model-params.json" "{}"}";
   };
 
   service = import ../modules/ai/_llm-gateway-service.nix {
@@ -91,6 +113,8 @@ let
       "dsh-offline"
       "localonly-online"
       "localonly-offline"
+      "pricetest-online"
+      "pricetest-offline"
     ];
     credPath = id: "/etc/test-secrets/provider-${id}";
   };
@@ -326,7 +350,7 @@ pkgs.testers.runNixOSTest {
     machine.fail("su alice -c 'ls /var/lib/private/llm-gateway-alice'")
     machine.fail("su alice -c 'ls /var/lib/llm-gateway-alice'")
     assert machine.succeed(f"ls {KEYS}").split() == sorted(
-        ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline"]
+        ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline", "pricetest-online", "pricetest-offline"]
     ), "пользователю публикуются только ключи доступа"
     machine.fail(f"grep -r fake-provider-key {KEYS}")
     # Другой пользователь (без ml, USER-7) не читает чужие ключи и каталог.
@@ -342,6 +366,24 @@ pkgs.testers.runNixOSTest {
     assert "spare" not in cfg["providers"], "провайдер без ключа должен быть вычеркнут"
     budgets = {b["virtual_key_id"]: b for b in cfg["governance"]["budgets"]}
     assert budgets["dsh-online"]["max_limit"] == 10 and "localonly-online" not in budgets, budgets
+    # Справочник цен — файл из хранилища, построенный из политики (ADR-49), а не загрузка поставщика.
+    pricing_url = cfg["framework"]["pricing"]["pricing_url"]
+    assert pricing_url.startswith("file:///nix/store/"), pricing_url
+    sheet = json.loads(machine.succeed(f"cat {pricing_url[len('file://'):]}"))
+    assert sheet["deepseek/model-cheap"]["input_cost_per_token"] == 3.0, sheet
+
+    # --- AI-GW-6, ADR-49: бюджет расходуется по ценам из политики и закрывается (402).
+    # Учёт у шлюза асинхронный — запросов до отказа может пройти больше двух.
+    codes = []
+    for _ in range(20):
+        code, body = ask("cost-autonomous", key("pricetest-online"))
+        codes.append(code)
+        if code != 200:
+            break
+        machine.sleep(1)
+    assert codes[0] == 200 and codes[-1] == 402, f"бюджет по ценам из политики: {codes} {body}"
+    assert "budget" in body.lower(), body
+    denied("cost-autonomous", key("pricetest-online"), "исчерпанный бюджет (402)")
 
     # --- Постоянство ключей и возврат после перезапуска.
     before = {n: key(n) for n in ["dsh-online", "localonly-offline"]}
