@@ -8,6 +8,7 @@
 # ссылка создаётся безусловно и становится рабочей без пересборки, когда каталог
 # появляется в рабочей копии (DOT-4 — "без приложения — пропуск" про ещё
 # не подтянутый nix flake update, а не про падение активации).
+# DOT-4 (R9.22): дополнительные цели записи `ai` — стандартные пути агентов (`agentLinks`).
 # Зависимости: host-facts, core/options (my.users.*) — только чтение (ARCH-3).
 {
   config,
@@ -51,6 +52,36 @@ let
       value = targetNameOverrides.${dir} or dir;
     }) appDirs
   );
+
+  # Дополнительные цели записи `ai` (DOT-4, ADR-47, REGISTRY.md): стандартные пути агентов
+  # вне ~/.config. Файлы — одной ссылкой; навыки — по одной на навык (каталог ~/.claude/skills
+  # ведёт сам Claude, целиком его не подменить). Берётся из закреплённого input (как `apps`):
+  # пока в нём нет `ai/AGENTS.md` или `ai/skills/`, ссылок нет (fail-soft, до `nix flake update`).
+  aiSrc = "${inputs.dotfiles}/ai";
+  aiSkillNames =
+    if builtins.pathExists "${aiSrc}/skills" then
+      builtins.attrNames (lib.filterAttrs (_: t: t == "directory") (builtins.readDir "${aiSrc}/skills"))
+    else
+      [ ];
+  agentLinks =
+    lib.optionalAttrs (builtins.pathExists "${aiSrc}/AGENTS.md") {
+      ".agents/AGENTS.md" = "ai/AGENTS.md";
+    }
+    // lib.optionalAttrs (builtins.pathExists "${aiSrc}/CLAUDE.md") {
+      ".claude/CLAUDE.md" = "ai/CLAUDE.md";
+    }
+    // builtins.listToAttrs (
+      lib.concatMap (n: [
+        {
+          name = ".agents/skills/${n}";
+          value = "ai/skills/${n}";
+        }
+        {
+          name = ".claude/skills/${n}";
+          value = "ai/skills/${n}";
+        }
+      ]) aiSkillNames
+    );
 
   # DSN-S5 (R6.8, исправление): имя файла обоев активного варианта — из того же
   # закреплённого input dotfiles, которым уже пользуется theme.nix (DSN-TOK-6).
@@ -124,11 +155,15 @@ in
       source = outer.my.users.${config.home.username}.dotfiles.source or null;
     in
     lib.mkIf (source != null) {
-      home.file = lib.mapAttrs' (
-        dir: target:
-        lib.nameValuePair ".config/${target}" {
-          source = config.lib.file.mkOutOfStoreSymlink "${source}/${dir}";
-        }
-      ) apps;
+      home.file =
+        lib.mapAttrs' (
+          dir: target:
+          lib.nameValuePair ".config/${target}" {
+            source = config.lib.file.mkOutOfStoreSymlink "${source}/${dir}";
+          }
+        ) apps
+        // lib.mapAttrs (_: rel: {
+          source = config.lib.file.mkOutOfStoreSymlink "${source}/${rel}";
+        }) agentLinks;
     };
 }

@@ -1,4 +1,5 @@
 ---
+name: gate
 description: Подготовить чек-лист приёмки Gate (например, /gate G1)
 argument-hint: <номер Gate, например G1>
 ---

@@ -25,7 +25,10 @@
     # DSH_HOME — каталог СОСТОЯНИЯ: dsh создаёт в нём профили, ставит бандлы и сам
     # сохраняет выбор модели интерфейса, поэтому он в state_dir, а не в ~/.config (ro).
     # Файлы профилей лаунчер НЕ пишет (D18).
-    extra_env=(--env "DSH_HOME=$state_dir/dsh-home")
+    # Общий корень агентов (инструкции `AGENTS.md` и навыки `skills/`, AI-AGT-8): штатно dsh
+    # читает `~/.agents`, но домашний каталог в песочнице скрыт, а `~/.config/ai` (ссылка на
+    # dotfiles/ai) виден на чтение — указываем его переменной окружения `DSH_AGENTS_HOME`.
+    extra_env=(--env "DSH_HOME=$state_dir/dsh-home" --env "DSH_AGENTS_HOME=$HOME/.config/ai")
     if [ "$agent_mode" = controlled ]; then
       extra_env+=(--env "DSH_PERMISSION_MODE=workspace-write")
     else

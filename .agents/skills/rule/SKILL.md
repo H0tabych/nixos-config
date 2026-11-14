@@ -1,4 +1,5 @@
 ---
+name: rule
 description: Показать правило по ID и где оно применяется (например, /rule STO-4)
 argument-hint: <ID правила, например STO-4>
 ---

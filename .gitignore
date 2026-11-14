@@ -12,6 +12,7 @@ result-*
 
 # личные настройки ассистента
 CLAUDE.local.md
+AGENTS.local.md
 .claude/settings.local.json
 
 # приватные материалы и ключи (хранятся вне репозитория, это страховка)

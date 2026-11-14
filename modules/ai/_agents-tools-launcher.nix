@@ -3,7 +3,7 @@
 # контракта (STR-5). Лаунчер общий и конкретных агентов не знает (AI-AGT-9): всё про
 # агента — в адаптере (`adapters`, _agents-tools-<агент>.nix): имя, признак подписки,
 # нужен ли ключ шлюза и фрагмент bash, который заполняет `bin`, `extra_env`,
-# `extra_bin_args` (перед аргументами пользователя), `tail_args` (после них), `sandbox_opts`, `publish`. Песочницу даёт владелец (`sandboxExec`).
+# `extra_bin_args` (перед аргументами пользователя), `tail_args` (после них), `sandbox_opts`, `publish`, `project_files` (строки «glob|причина» — файлы агента в проекте, AI-AGT-9). Песочницу даёт владелец (`sandboxExec`).
 # Адаптер с `longLived` (AI-SBX-13, ADR-48) работает в долгоживущей песочнице: лаунчер её
 # поднимает (`agents-host ensure`) и входит (`agents-host enter`) — только `online` и только
 # проект внутри $HOME (кроме $HOME в ней ничего нет).
@@ -13,6 +13,7 @@
   sandboxExec,
   netTool,
   gitTool,
+  docsTool,
   hostTool,
   adapters,
 }:
@@ -36,6 +37,7 @@ pkgs.writeShellApplication {
     sandboxExec
     netTool
     gitTool
+    docsTool
     hostTool
     pkgs.git
   ];
@@ -156,6 +158,7 @@ pkgs.writeShellApplication {
         ;;
     esac
     publish=()
+    project_files=""
     extra_env=()
     extra_bin_args=()
     tail_args=()
@@ -181,6 +184,9 @@ pkgs.writeShellApplication {
     # Долгоживущая песочница поднимается до снимка: её отказ — отказ запуска (AI-SBX-6).
     [ "$longlived" -eq 0 ] || agents-host ensure "$role"
     agents-git snapshot "$project_dir" "$report_snap" || true
+    docs_snap=$(mktemp)
+    trap 'rm -f "$report_snap" "$docs_snap"' EXIT
+    agents-docs snapshot "$project_dir" "$docs_snap" || true
 
     rc=0
     if [ "$longlived" -eq 1 ]; then
@@ -202,6 +208,7 @@ pkgs.writeShellApplication {
     fi
 
     agents-git report "$project_dir" "$report_snap" || true
+    AGENTS_PROJECT_FILES="$project_files" agents-docs report "$project_dir" "$docs_snap" || true
     exit "$rc"
   '';
 }

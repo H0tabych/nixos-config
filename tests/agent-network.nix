@@ -19,6 +19,7 @@
 { pkgs, ... }:
 let
   gitTool = pkgs.callPackage ../modules/ai/_agents-tools-git.nix { };
+  docsTool = pkgs.callPackage ../modules/ai/_agents-tools-docs.nix { };
   nftTool = pkgs.callPackage ../modules/ai/_agents-tools-nft.nix { };
   netTool = pkgs.callPackage ../modules/ai/_agents-tools-net.nix {
     inherit nftTool;
@@ -71,6 +72,7 @@ let
       sandboxExec
       netTool
       gitTool
+      docsTool
       hostTool
       adapters
       ;
@@ -387,6 +389,18 @@ pkgs.testers.runNixOSTest {
     machine.succeed(f"test -e {HOME}/.claude/sessions/keep.txt && test -e {HOME}/.claude/projects/p/s.jsonl")
     machine.succeed(outside(f"{RT} systemctl --user stop {UNIT}"))
     assert_clean()
+    # Отчёт лаунчера о документах и файлах агентов (AI-AGT-8, AI-A19).
+    DOCS = f"{HOME}/other/docs"
+    as_agent(
+        f"mkdir -p {DOCS} && cd {DOCS} && git init -q && echo canon > AGENTS.md && echo plain > CLAUDE.md "
+        "&& git add . && git -c user.name=t -c user.email=t@t commit -qm init"
+    )
+    status, out = launch("claude -- --probe sh -c 'touch CLAUDE.local.md notes.txt'", DOCS)
+    assert status == 0, out
+    assert "файл агента: CLAUDE.local.md" in out, f"известный файл агента помечен: {out}"
+    assert "notes.txt" not in out, f"обычные файлы проекта в отчёт не идут: {out}"
+    assert "без строки '@AGENTS.md'" in out, f"CLAUDE.md без импорта — замечание (AI-A19): {out}"
+    machine.succeed(outside(f"{RT} systemctl --user stop {UNIT}"))
     # dsh: режим — штатная переменная DSH_PERMISSION_MODE; флаги сочетаются в любом порядке.
     out, r = probe_in("dsh", f"{HOME}/other/free")
     assert r["dsmode"] == "danger-full-access", f"dsh autonomous: граница — песочница лаунчера: {out}"

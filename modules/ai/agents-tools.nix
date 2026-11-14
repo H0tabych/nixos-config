@@ -57,6 +57,7 @@ _: {
     }:
     let
       gitTool = pkgs.callPackage ./_agents-tools-git.nix { };
+      docsTool = pkgs.callPackage ./_agents-tools-docs.nix { };
       nftTool = pkgs.callPackage ./_agents-tools-nft.nix { };
       # Сети VPN — линки корпоративных зон туннеля; на хосте без туннеля список пуст.
       vpnLinks = map (z: z.link) (lib.attrByPath [ "my" "tunnel" "dns" "scopedZones" ] [ ] osConfig);
@@ -115,6 +116,7 @@ _: {
           sandboxExec
           netTool
           gitTool
+          docsTool
           hostTool
           adapters
           ;

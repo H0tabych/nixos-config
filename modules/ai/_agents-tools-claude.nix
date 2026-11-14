@@ -43,6 +43,8 @@
       --env "DISABLE_ERROR_REPORTING=1"
       --env "DISABLE_AUTOUPDATER=1"
     )
+    # Известные файлы агента в проекте (AI-AGT-9): отчёт лаунчера помечает их «файл агента».
+    project_files=$'.claude/settings.local.json|личные настройки Claude Code (держите в .gitignore)\nCLAUDE.local.md|личные инструкции Claude Code (держите в .gitignore)'
     # Список MCP подсистемы (AI-CTX-3) — к MCP пользователя, без --strict-mcp-config:
     # строгий режим отключил бы плагины и подключения аккаунта (ADR-47). Определения MCP
     # из проекта по-прежнему подтверждаются человеком (AI-SBX-9) — решает само приложение.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Проверки структуры C1, C2, C4–C12 (STRUCTURE.md, раздел 8).
+# Проверки структуры C1, C2, C4–C13 (STRUCTURE.md, раздел 8).
 # C3 — отдельно в modules/core/checks-structure.nix: нужен доступ к flake.modules.*.
 # Запуск: из корня репозитория (вручную) или из песочницы nix flake check (checks.structure-shell).
 set -euo pipefail
@@ -229,6 +229,42 @@ if [ -n "$c12_hits" ]; then
 else
   note "C12 OK"
 fi
+
+# --- C13 — AI-AGT-8, AI-A19: единая документация агентов -------------------
+# AGENTS.md — канон (≤ 200 строк); CLAUDE.md — импорт `@AGENTS.md` и специфика;
+# навыки — .agents/skills/<имя>/SKILL.md, .claude/skills — симлинк, а не копия.
+c13_fail=0
+if [ -f AGENTS.md ]; then
+  agents_lines=$(wc -l < AGENTS.md)
+  if [ "$agents_lines" -gt 200 ]; then
+    err "C13: AGENTS.md — $agents_lines строк (> 200, STRUCTURE.md раздел 2)"
+    c13_fail=1
+  fi
+else
+  err "C13: нет AGENTS.md (канон инструкций агентов)"
+  c13_fail=1
+fi
+if [ -f CLAUDE.md ] && ! grep -qx '@AGENTS.md' CLAUDE.md; then
+  err "C13: CLAUDE.md без строки-импорта '@AGENTS.md' (AI-A19)"
+  c13_fail=1
+fi
+if [ -e .claude/skills ] && { [ ! -L .claude/skills ] || [ "$(readlink .claude/skills)" != "../.agents/skills" ]; }; then
+  err "C13: .claude/skills должен быть симлинком на ../.agents/skills, а не копией"
+  c13_fail=1
+fi
+if [ -d .claude/commands ]; then
+  err "C13: .claude/commands/ — команды переведены в навыки .agents/skills (ADR-47)"
+  c13_fail=1
+fi
+for skill in .agents/skills/*/SKILL.md; do
+  [ -e "$skill" ] || continue
+  dir=$(basename "$(dirname "$skill")")
+  if ! grep -qx "name: $dir" "$skill"; then
+    err "C13: $skill — в заголовке нет 'name: $dir' (имя навыка = имя каталога)"
+    c13_fail=1
+  fi
+done
+[ "$c13_fail" -eq 0 ] && note "C13 OK"
 
 if [ "$fail" -ne 0 ]; then
   exit 1

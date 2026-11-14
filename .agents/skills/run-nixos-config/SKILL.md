@@ -21,7 +21,7 @@ this skill directory.
 
 ## Hard rule this skill respects
 
-Per `CLAUDE.md`, never run `sudo`, `nixos-rebuild`, `nixos-install`,
+Per `AGENTS.md`, never run `sudo`, `nixos-rebuild`, `nixos-install`,
 `disko`, or other destructive/host-mutating commands. Both paths below
 use only `nix fmt`, `nix flake check`, and `nix build` — never
 `nixos-rebuild` (not even `build-vm`), never `sudo`. `ci-vm` is a
@@ -47,12 +47,12 @@ nix develop --command bash scripts/check-secrets.sh  # gitleaks scan
 ## 2. Boot and interrogate `ci-vm` (agent path)
 
 ```
-./.claude/skills/run-nixos-config/driver.sh
+./.agents/skills/run-nixos-config/driver.sh
 ```
 
 What it does (verified working in this sandbox, ~55s end to end):
 
-1. Builds `.claude/skills/run-nixos-config/debug-vm.nix` with
+1. Builds `.agents/skills/run-nixos-config/debug-vm.nix` with
    `nix build --impure -f ... -o <workdir>/vm-result`. This is the exact
    same attribute CI builds (`nix build
    .#nixosConfigurations.ci-vm.config.system.build.vm`), just layered

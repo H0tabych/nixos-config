@@ -1,8 +1,3 @@
----
-paths:
-  - "modules/**/*.nix"
----
-
 # Правила файлов в `modules/` (STRUCTURE.md, раздел 3)
 
 - Каждый `.nix` без префикса `_` — flake-parts-модуль. Глубина ровно `modules/<домен>/<файл>.nix` (STR-2). Исключения — `hosts/` и `users/` при росте.
