@@ -58,6 +58,7 @@ pkgs.testers.runNixOSTest {
       pkgs.bubblewrap
       pkgs.git
       pkgs.direnv
+      pkgs.jq
     ];
   };
 
@@ -339,30 +340,27 @@ pkgs.testers.runNixOSTest {
     status, _ = machine.execute(sandbox("true", HRW, project="/"))
     assert status != 0, "project-dir = / запрещён в любом режиме"
 
-    # === AI-SBX-13: --private-*: состояние супервизора фоновых сессий не общее с хостом ==
-    fixture_file("/home/agent/.claude/daemon/control.key", "daemon-key-marker", "0600")
-    fixture_file("/home/agent/.claude/daemon.status.json", "host-status-marker", "0644")
-    PRIV = f"{HRW} --private-dir .claude/daemon --private-file .claude/daemon.status.json"
-    status, out = machine.execute(sandbox("cat /home/agent/.claude/daemon/control.key", PRIV))
-    assert "daemon-key-marker" not in out, "AI-SBX-13: ключ управления супервизором хоста не виден"
-    assert "host-status-marker" not in sandbox_out("cat /home/agent/.claude/daemon.status.json", PRIV), (
-        "AI-SBX-13: реестр хоста подменён"
-    )
-    # Запись внутри не доходит до хоста (очередь запросов хоста не достижима из песочницы).
-    sandbox_out(
-        "sh -c " + shlex.quote("mkdir -p /home/agent/.claude/daemon/dispatch && touch /home/agent/.claude/daemon/dispatch/req"),
-        PRIV,
-    )
-    machine.fail("test -e /home/agent/.claude/daemon/dispatch/req")
-    assert "daemon-key-marker" in machine.succeed(outside("cat /home/agent/.claude/daemon/control.key")), (
-        "контроль: на хосте ключ на месте"
-    )
-    # Остальной $HOME в --home-rw по-прежнему доступен; без --home-rw опции запрещены.
-    assert "fake-ssh-key" in sandbox_out("cat /home/agent/.ssh/id_ed25519", PRIV)
-    status, _ = machine.execute(sandbox("true", "--private-dir .claude/daemon"))
-    assert status != 0, "--private-dir без --home-rw не имеет смысла — отказ"
-    status, _ = machine.execute(sandbox("true", f"{HRW} --private-dir ../escape"))
-    assert status != 0, "--private-dir не выходит за $HOME"
+    # === AI-SBX-13 (ADR-48): песочница без проекта — основа долгоживущей =================
+    status, _ = machine.execute(sandbox("true", project="-"))
+    assert status != 0, "без проекта и без --home-rw — отказ (пустая песочница бессмысленна)"
+    sandbox_out("touch /home/agent/written-noproject", HRW, project="-")
+    machine.succeed("test -e /home/agent/written-noproject")
+    status, out = machine.execute(sandbox("cat /run/secrets/outside-secret", HRW, project="-"))
+    assert status != 0 and "top-secret" not in out, "без проекта граница вне $HOME та же"
+    for sock in SOCKETS:
+        status, _ = machine.execute(sandbox(f"test -e {sock}", HRW, project="-"))
+        assert status != 0, f"без проекта: {sock} не должен существовать"
+    # --info-file: сведения bwrap для входа (pid процесса внутри и id пространств).
+    sandbox_out("true", f"{HRW} --info-file /home/agent/sbx.json", project="-")
+    machine.succeed("""jq -e '."child-pid" > 0 and ."pid-namespace" > 0 and ."mnt-namespace" > 0' /home/agent/sbx.json""")
+    # --print-env: окружение AI-SBX-3 потоком (NUL), ничего не запускает; ключ — не из argv.
+    envs = machine.succeed(outside(
+        "SSH_AUTH_SOCK=/run/user/2000/ssh GW_KEY=gw-key-value "
+        "agents-sandbox-exec - /home/agent/state online --pass-env GW_KEY --env A=b --print-env | tr '\\0' '\\n'"
+    )).splitlines()
+    for kv in ["GW_KEY=gw-key-value", "A=b", "HOME=/home/agent", "NIX_REMOTE=daemon", "XDG_RUNTIME_DIR=/run/user/2000"]:
+        assert kv in envs, f"--print-env: нет {kv}: {envs}"
+    assert not any(e.startswith("SSH_AUTH_SOCK=") for e in envs), f"--print-env: только перечень AI-SBX-3: {envs}"
 
     # === Политика Nix для dsh (R9.14, R9.18): поиск, телеметрия, менеджер плагинов ==
     text = machine.succeed("cat /etc/dsh-policy.yml")

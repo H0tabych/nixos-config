@@ -1,8 +1,6 @@
 # Приватная часть: agents-tools · Владелец: modules/ai/agents-tools.nix (STR-6)
-# Лаунчер-песочница (AI_SUBSYSTEM.md §3.4): единая точка истины для
-# bubblewrap-изоляции агентов — её используют и фича (agents-tools.nix), и тесты
-# (tests/agent-sandbox.nix, agent-network.nix): проверяется тот код, что реально
-# запускается (AI-SBX-11).
+# Лаунчер-песочница (AI_SUBSYSTEM.md §3.4): единая точка истины bubblewrap-изоляции агентов —
+# её используют и фича, и тесты: проверяется тот код, что реально запускается (AI-SBX-11).
 #
 # AI-SBX-1 (R9.14): корень СОБИРАЕТСЯ из разрешённого, а не берётся с хоста с
 # масками (D17). Только чтение: хранилище пакетов, /etc, /run/current-system,
@@ -12,7 +10,8 @@
 # AI-SBX-2: $HOME скрыт `--tmpfs`; из ~/.config — только белый список (machine.d,
 # ai, git, direnv + `--config`), ro. Запись — `project-dir` и `state-dir`; у роли
 # свои XDG_CACHE/STATE/DATA_HOME внутри state-dir.
-# AI-SBX-3: окружение с нуля (`env -i`); ключ шлюза — значением через `--pass-env`.
+# AI-SBX-3: окружение с нуля (`env -i`); ключ шлюза — значением через `--pass-env`;
+# `--print-env` — это окружение NUL-потоком без запуска (вход AI-SBX-13, `agents-host enter`).
 # AI-SBX-5 (ADR-47, R9.20): сеть даёт охранник (`agents-net guard`: pasta + nftables), он
 # выставляет AGENTS_NET_GUARDED=1. Агент во вложенном пространстве пользователя
 # (`--unshare-user`) прав над сетевым не имеет и правил не меняет. Без охранника (тесты,
@@ -20,10 +19,12 @@
 # `online`: есть сокет демона сборки; `offline`: нет.
 # AI-SBX-7 (R9.15): работа на месте; метаданные git и `.envrc` ro, список —
 # `agents-git binds`; `.direnv` у роли свой.
+# AI-SBX-13 (ADR-48): project-dir `-` — без проекта (только с `--home-rw`), долгоживущая
+# песочница, в которую входят окна; `--info-file` — JSON `bwrap --info-fd` (id пространств).
 {
   pkgs,
   gitTool,
-  mounts, # фрагмент bash с монтированиями (AI-SBX-2/7/12/13) — передаёт владелец
+  mounts, # фрагмент bash с монтированиями (AI-SBX-2/7/12) — передаёт владелец
 }:
 pkgs.writeShellApplication {
   name = "agents-sandbox-exec";
@@ -34,7 +35,8 @@ pkgs.writeShellApplication {
   ];
   text = ''
     usage() {
-      echo "usage: agents-sandbox-exec <project-dir> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--private-dir REL]... [--private-file REL]... [--cwd PATH] [--home-rw] -- <cmd...>" >&2
+      echo "usage: agents-sandbox-exec <project-dir|-> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--cwd PATH] [--home-rw] [--info-file PATH] -- <cmd...>" >&2
+      echo "       agents-sandbox-exec <project-dir|-> <state-dir> <online|offline> [--env ...] [--pass-env ...] --print-env" >&2
       exit 1
     }
 
@@ -49,26 +51,20 @@ pkgs.writeShellApplication {
       *) usage ;;
     esac
 
-    # --env — доплата к окружению от вызывающего (значения не из проекта, AI-SBX-9);
-    # --pass-env — то же, но значение из окружения процесса (ключ шлюза: не в argv);
-    # --config — каталог роли в ~/.config (белый список), ro; --app-path — свой
-    # каталог приложения на запись (§2.5, класс D); --cwd — рабочий каталог внутри
-    # project-dir. --private-dir/--private-file — путь ОТНОСИТЕЛЬНО $HOME (только с --home-rw),
-    # который в песочнице подменяется собственным каталогом/файлом в state-dir: настоящий
-    # остаётся недоступным (общее с хостом состояние, которое агент не должен ни читать, ни
-    # менять — напр. каналы управления супервизором фоновых сессий, AI-SBX-13).
-    # --home-rw — ОСЛАБЛЕННЫЙ режим (AI-SBX-12): $HOME на запись
-    # целиком; корень из разрешённого и сокеты сессии/секреты шлюза недоступны
-    # по-прежнему, теряются ключи SSH/GPG, ключ расшифровки, репозиторий
-    # конфигурации и прочее содержимое $HOME.
+    # --env — доплата к окружению от вызывающего (не из проекта, AI-SBX-9); --pass-env — то же,
+    # значение из окружения процесса (ключ шлюза: не в argv); --config — каталог роли в ~/.config
+    # (белый список), ro; --app-path — свой каталог приложения на запись (§2.5, класс D); --cwd —
+    # рабочий каталог внутри project-dir. --home-rw — ОСЛАБЛЕННЫЙ режим (AI-SBX-12): $HOME на запись
+    # целиком; корень из разрешённого и сокеты сессии/секреты шлюза недоступны по-прежнему,
+    # теряются ключи SSH/GPG, ключ расшифровки, репозиторий конфигурации и прочее в $HOME.
     extra_env=()
     pass_env=()
     config_dirs=()
     app_paths=()
-    private_dirs=()
-    private_files=()
     cwd_arg=""
     home_rw=0
+    info_file=""
+    print_env=0
     while :; do
       case "''${1:-}" in
         --env)
@@ -90,12 +86,6 @@ pkgs.writeShellApplication {
           app_paths+=("$2")
           shift 2
           ;;
-        --private-dir | --private-file)
-          # Относительный путь без `..` и пустых сегментов: выйти из $HOME нельзя.
-          case "$2" in "" | /* | .. | ../* | */.. | */../* | */ | *//*) usage ;; esac
-          if [ "$1" = --private-dir ]; then private_dirs+=("$2"); else private_files+=("$2"); fi
-          shift 2
-          ;;
         --cwd)
           cwd_arg="$2"
           shift 2
@@ -104,55 +94,25 @@ pkgs.writeShellApplication {
           home_rw=1
           shift
           ;;
+        --info-file)
+          info_file="$2"
+          shift 2
+          ;;
+        --print-env)
+          print_env=1
+          shift
+          ;;
         *) break ;;
       esac
     done
-    [ "''${1:-}" = "--" ] || usage
-    shift
+    if [ "$print_env" -eq 0 ]; then
+      [ "''${1:-}" = "--" ] || usage
+      shift
+    fi
     real_home="$HOME"
     # В пространстве охранника `id` — root пространства: настоящие uid/gid идут от `agents-net run`.
     uid=''${AGENTS_HOST_UID:-$(id -u)}
     gid=''${AGENTS_HOST_GID:-$(id -g)}
-    guarded=0
-    [ "''${AGENTS_NET_GUARDED:-}" = 1 ] && guarded=1
-    resolv_conf=''${AGENTS_RESOLV_CONF:-}
-    unset AGENTS_RESOLV_CONF AGENTS_NET_GUARDED AGENTS_HOST_UID AGENTS_HOST_GID
-    # AI-SBX-6: охранник заявлен — правила обязаны быть загружены.
-    [ "$guarded" -eq 0 ] || nft list table inet agents > /dev/null 2>&1 || {
-      echo "agents-sandbox-exec: охранник заявлен, таблицы nftables inet agents нет (AI-SBX-6)" >&2
-      exit 1
-    }
-    # project-dir не создаём: несуществующий путь — ошибка вызывающего (AI-SBX-6).
-    mkdir -p "$state_dir/cache" "$state_dir/state" "$state_dir/data"
-
-    # AI-SBX-2, fail-closed: `--bind project_dir` идёт ПОСЛЕ `--tmpfs real_home`,
-    # поэтому $HOME (или его предок) в роли project_dir вернул бы агенту настоящий
-    # $HOME на запись (ПРОВЕРЕНО: читался ~/.ssh/). `/` запрещён всегда; в
-    # --home-rw $HOME открыт намеренно.
-    project_real=$(realpath -- "$project_dir")
-    home_real=$(realpath -- "$real_home")
-    if [ "$project_real" = "/" ] || { [ "$home_rw" -eq 0 ] && {
-      [ "$project_real" = "$home_real" ] ||
-        case "$home_real" in "$project_real"/*) true ;; *) false ;; esac
-    }; }; then
-      echo "agents-sandbox-exec: project-dir ($project_real) — домашний каталог, его предок или корень;" >&2
-      echo "  запуск запрещён (AI-SBX-2: это открыло бы агенту секреты и ключи)." >&2
-      echo "  Перейдите в каталог конкретного проекта и повторите." >&2
-      exit 1
-    fi
-
-    # --cwd обязан лежать внутри project-dir (иначе chdir вывел бы в пустой tmpfs).
-    cwd_real="$project_real"
-    if [ -n "$cwd_arg" ]; then
-      cwd_real=$(realpath -- "$cwd_arg")
-      case "$cwd_real" in
-        "$project_real" | "$project_real"/*) ;;
-        *)
-          echo "agents-sandbox-exec: --cwd ($cwd_real) вне project-dir ($project_real)" >&2
-          exit 1
-          ;;
-      esac
-    fi
 
     # HOME — НАСТОЯЩИЙ путь (внутри пустой tmpfs), иначе `~/...` не совпал бы с
     # --app-path (ПРОВЕРЕНО). XDG_* — свои у роли; XDG_CONFIG_HOME не задаём.
@@ -181,6 +141,60 @@ pkgs.writeShellApplication {
     done
     if [ "''${#extra_env[@]}" -gt 0 ]; then
       env_args+=("''${extra_env[@]}")
+    fi
+    # Окружение для входа в долгоживущую песочницу — в поток, не в argv (ключи, AI-SBX-3).
+    if [ "$print_env" -eq 1 ]; then
+      mkdir -p "$state_dir/cache" "$state_dir/state" "$state_dir/data"
+      printf '%s\0' "''${env_args[@]}"
+      exit 0
+    fi
+
+    guarded=0
+    [ "''${AGENTS_NET_GUARDED:-}" = 1 ] && guarded=1
+    resolv_conf=''${AGENTS_RESOLV_CONF:-}
+    unset AGENTS_RESOLV_CONF AGENTS_NET_GUARDED AGENTS_HOST_UID AGENTS_HOST_GID
+    # AI-SBX-6: охранник заявлен — правила обязаны быть загружены.
+    [ "$guarded" -eq 0 ] || nft list table inet agents > /dev/null 2>&1 || {
+      echo "agents-sandbox-exec: охранник заявлен, таблицы nftables inet agents нет (AI-SBX-6)" >&2
+      exit 1
+    }
+    mkdir -p "$state_dir/cache" "$state_dir/state" "$state_dir/data"
+
+    no_project=0
+    if [ "$project_dir" = "-" ]; then
+      # Без проекта песочница имеет смысл только с домашним каталогом (AI-SBX-12, AI-SBX-13).
+      [ "$home_rw" -eq 1 ] || usage
+      no_project=1
+    else
+      # project-dir не создаём: несуществующий путь — ошибка вызывающего (AI-SBX-6).
+      # AI-SBX-2, fail-closed: `--bind project_dir` идёт ПОСЛЕ `--tmpfs real_home`,
+      # поэтому $HOME (или его предок) в роли project_dir вернул бы агенту настоящий
+      # $HOME на запись (ПРОВЕРЕНО: читался ~/.ssh/). `/` запрещён всегда; в
+      # --home-rw $HOME открыт намеренно.
+      project_real=$(realpath -- "$project_dir")
+      home_real=$(realpath -- "$real_home")
+      if [ "$project_real" = "/" ] || { [ "$home_rw" -eq 0 ] && {
+        [ "$project_real" = "$home_real" ] ||
+          case "$home_real" in "$project_real"/*) true ;; *) false ;; esac
+      }; }; then
+        echo "agents-sandbox-exec: project-dir ($project_real) — домашний каталог, его предок или корень;" >&2
+        echo "  запуск запрещён (AI-SBX-2: это открыло бы агенту секреты и ключи)." >&2
+        echo "  Перейдите в каталог конкретного проекта и повторите." >&2
+        exit 1
+      fi
+
+      # --cwd обязан лежать внутри project-dir (иначе chdir вывел бы в пустой tmpfs).
+      cwd_real="$project_real"
+      if [ -n "$cwd_arg" ]; then
+        cwd_real=$(realpath -- "$cwd_arg")
+        case "$cwd_real" in
+          "$project_real" | "$project_real"/*) ;;
+          *)
+            echo "agents-sandbox-exec: --cwd ($cwd_real) вне project-dir ($project_real)" >&2
+            exit 1
+            ;;
+        esac
+      fi
     fi
 
     # Голый корень bwrap — tmpfs; ниже — перечень разрешённого (AI-SBX-1).
@@ -221,12 +235,16 @@ pkgs.writeShellApplication {
         bwrap_args+=(--symlink "$(readlink -f "$f")" "$f")
       fi
     done
+    # AI-SBX-13: сведения о песочнице для входа (pid процесса внутри, id пространств).
+    if [ -n "$info_file" ]; then
+      exec 4> "$info_file"
+      bwrap_args+=(--info-fd 4)
+    fi
 
     ${mounts}
 
     # AI-SBX-6 (fail-closed): ошибка bwrap (AI-SBX-11) останавливает скрипт
     # (`set -e`) до исполнения команды.
-    rm -f "$git_binds_file"
     exec env -i "''${env_args[@]}" bwrap "''${bwrap_args[@]}" -- "$@"
   '';
 }

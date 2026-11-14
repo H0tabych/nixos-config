@@ -23,6 +23,11 @@
 # линки `my.tunnel.dns.scopedZones.*.link`; порты служб хоста без аутентификации,
 # закрытые агенту, — `my.net.sensitiveLoopbackPorts` (D21). Порт веб-интерфейса dsh — на
 # пользователя от `my.ai.gateway.portBase` (+100 + uid − 1000), чтобы не пересекаться со шлюзом.
+# AI-SBX-13 (ADR-48): агент, чьи процессы по замыслу разработчиков живут дольше окна
+# (claude: супервизор фоновых сессий, `claude agents`), работает в ОДНОЙ долгоживущей
+# песочнице на пользователя — транзиентный юнит `agents-<агент>.service`; каждое окно входит
+# в неё (`_agents-tools-host.nix`, `agents-host`). Остановить всё: `systemctl --user stop
+# agents-claude` (фоновые сессии тоже остановятся).
 # Конфиг агента — в dotfiles (AI-AGT-3), под ~/.config/<агент>/. Песочница (AI-SBX-1/2,
 # R9.14) собирает корень из разрешённого и возвращает из ~/.config только белый список
 # (machine.d, ai, git, direnv) и каталоги агента (`--config`), только чтение; остальной
@@ -101,11 +106,16 @@ _: {
         })
       ];
 
+      hostTool = pkgs.callPackage ./_agents-tools-host.nix {
+        inherit netTool sandboxExec adapters;
+      };
+
       agentLauncher = pkgs.callPackage ./_agents-tools-launcher.nix {
         inherit
           sandboxExec
           netTool
           gitTool
+          hostTool
           adapters
           ;
       };

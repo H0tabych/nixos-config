@@ -4,12 +4,16 @@
 # агента — в адаптере (`adapters`, _agents-tools-<агент>.nix): имя, признак подписки,
 # нужен ли ключ шлюза и фрагмент bash, который заполняет `bin`, `extra_env`,
 # `extra_bin_args` (перед аргументами пользователя), `tail_args` (после них), `sandbox_opts`, `publish`. Песочницу даёт владелец (`sandboxExec`).
+# Адаптер с `longLived` (AI-SBX-13, ADR-48) работает в долгоживущей песочнице: лаунчер её
+# поднимает (`agents-host ensure`) и входит (`agents-host enter`) — только `online` и только
+# проект внутри $HOME (кроме $HOME в ней ничего нет).
 {
   pkgs,
   lib,
   sandboxExec,
   netTool,
   gitTool,
+  hostTool,
   adapters,
 }:
 let
@@ -18,6 +22,7 @@ let
   usageList = lib.concatStringsSep "|" (map (a: a.name) adapters);
   subscriptionNames = names (lib.filter (a: a.subscription) adapters);
   gatewayNames = names (lib.filter (a: a.gatewayKey) adapters);
+  longLivedNames = names (lib.filter (a: a ? longLived) adapters);
   agentCases = lib.concatMapStrings (a: ''
     ${a.name})
     ${a.shell}
@@ -31,6 +36,7 @@ pkgs.writeShellApplication {
     sandboxExec
     netTool
     gitTool
+    hostTool
     pkgs.git
   ];
   text = ''
@@ -38,6 +44,7 @@ pkgs.writeShellApplication {
     all_agents=" ${allNames} "
     subscription_agents=" ${subscriptionNames} "
     gateway_agents=" ${gatewayNames} "
+    longlived_agents=" ${longLivedNames} "
 
     usage() {
       echo "usage: agent-launcher <${usageList}> [--controlled] [--offline] [-- args...]" >&2
@@ -86,6 +93,23 @@ pkgs.writeShellApplication {
           echo "agent-launcher: $role работает по подписке и в offline не запускается (AI-SBX-5)" >&2
           exit 1
         fi
+        ;;
+    esac
+    longlived=0
+    case "$longlived_agents" in
+      *" $role "*)
+        longlived=1
+        if [ "$mode" = offline ]; then
+          echo "agent-launcher: $role живёт в долгоживущей песочнице, она только online (AI-SBX-13)" >&2
+          exit 1
+        fi
+        case "$(realpath -- "$project_dir")" in
+          "$(realpath -- "$HOME")"/*) ;;
+          *)
+            echo "agent-launcher: $role работает только с проектами внутри домашнего каталога (AI-SBX-13)" >&2
+            exit 1
+            ;;
+        esac
         ;;
     esac
 
@@ -154,16 +178,28 @@ pkgs.writeShellApplication {
     # агенту, и лаунчеру, который после этого доходит до отчёта).
     report_snap=$(mktemp)
     trap 'rm -f "$report_snap"' EXIT
+    # Долгоживущая песочница поднимается до снимка: её отказ — отказ запуска (AI-SBX-6).
+    [ "$longlived" -eq 0 ] || agents-host ensure "$role"
     agents-git snapshot "$project_dir" "$report_snap" || true
 
-    # `agents-net run` поднимает пространство сети агента (pasta), охранник грузит правила
-    # nftables до старта песочницы; не поднялось — агент не стартует (AI-SBX-6).
     rc=0
-    agents-net run "$mode" "''${gw_port:--}" ''${publish[@]+"''${publish[@]}"} -- \
-      agents-sandbox-exec "$project_dir" "$state_dir" "$mode" --cwd "$PWD" \
-      ''${extra_env[@]+"''${extra_env[@]}"} ''${sandbox_opts[@]+"''${sandbox_opts[@]}"} -- \
-      direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@" \
-      ''${tail_args[@]+"''${tail_args[@]}"} || rc=$?
+    if [ "$longlived" -eq 1 ]; then
+      # Вход в долгоживущую песочницу (AI-SBX-13): окружение AI-SBX-3 — потоком на fd 3.
+      agents-host enter "$role" "$PWD" -- \
+        direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@" \
+        ''${tail_args[@]+"''${tail_args[@]}"} \
+        3< <(agents-sandbox-exec - "$state_dir" online \
+          ''${extra_env[@]+"''${extra_env[@]}"} ''${sandbox_opts[@]+"''${sandbox_opts[@]}"} --print-env) ||
+        rc=$?
+    else
+      # `agents-net run` поднимает пространство сети агента (pasta), охранник грузит правила
+      # nftables до старта песочницы; не поднялось — агент не стартует (AI-SBX-6).
+      agents-net run "$mode" "''${gw_port:--}" ''${publish[@]+"''${publish[@]}"} -- \
+        agents-sandbox-exec "$project_dir" "$state_dir" "$mode" --cwd "$PWD" \
+        ''${extra_env[@]+"''${extra_env[@]}"} ''${sandbox_opts[@]+"''${sandbox_opts[@]}"} -- \
+        direnv exec "$project_dir" "$bin" "''${extra_bin_args[@]}" "$@" \
+        ''${tail_args[@]+"''${tail_args[@]}"} || rc=$?
+    fi
 
     agents-git report "$project_dir" "$report_snap" || true
     exit "$rc"

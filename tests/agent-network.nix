@@ -54,16 +54,26 @@ let
     '';
 
   # Адаптеры настоящие (AI-AGT-9), пакеты агентов — заглушки.
+  adapters = [
+    (pkgs.callPackage ../modules/ai/_agents-tools-claude.nix { claudeCode = stub "claude"; })
+    (pkgs.callPackage ../modules/ai/_agents-tools-dsh.nix {
+      deepseekHarness = stub "dsh";
+      inherit dshPolicy;
+      webPortBase = 11600;
+    })
+  ];
+  # Долгоживущая песочница (AI-SBX-13, ADR-48) — тот же `agents-host`, что у фичи.
+  hostTool = pkgs.callPackage ../modules/ai/_agents-tools-host.nix {
+    inherit netTool sandboxExec adapters;
+  };
   launcher = pkgs.callPackage ../modules/ai/_agents-tools-launcher.nix {
-    inherit sandboxExec netTool gitTool;
-    adapters = [
-      (pkgs.callPackage ../modules/ai/_agents-tools-claude.nix { claudeCode = stub "claude"; })
-      (pkgs.callPackage ../modules/ai/_agents-tools-dsh.nix {
-        deepseekHarness = stub "dsh";
-        inherit dshPolicy;
-        webPortBase = 11600;
-      })
-    ];
+    inherit
+      sandboxExec
+      netTool
+      gitTool
+      hostTool
+      adapters
+      ;
   };
 in
 pkgs.testers.runNixOSTest {
@@ -80,6 +90,7 @@ pkgs.testers.runNixOSTest {
 
     environment.systemPackages = [
       launcher
+      hostTool
       sandboxExec
       netTool
       nftTool
@@ -97,6 +108,7 @@ pkgs.testers.runNixOSTest {
   };
 
   testScript = ''
+    import re
     import shlex
 
     machine.wait_for_unit("multi-user.target")
@@ -323,6 +335,58 @@ pkgs.testers.runNixOSTest {
     launch("claude -- attach abc123", f"{HOME}/other/free")
     args = machine.succeed(f"cat {HOME}/other/free/stub-args-claude").splitlines()
     assert args[:2] == ["attach", "abc123"], f"подкоманда агента идёт первой: {args}"
+
+    # === AI-SBX-13 (ADR-48): claude — одна долгоживущая песочница, окна входят в неё =====
+    RT = "XDG_RUNTIME_DIR=/run/user/2000"
+    UNIT = "agents-claude.service"
+    machine.succeed(outside(f"{RT} systemctl --user is-active {UNIT}"))
+
+    def claude_probe(cmd, project=f"{HOME}/other/free"):
+        status, out = launch(f"claude -- --probe sh -c {shlex.quote(cmd)}", project)
+        assert status == 0, f"вход в песочницу не удался: {out}"
+        return out
+
+    def found(pattern, out, group=0):
+        m = re.search(pattern, out)
+        assert m is not None, f"нет {pattern} в выводе: {out}"
+        return m.group(group)
+
+    def pidns(out):
+        return found(r"pid:\[\d+\]", out)
+
+    # Два окна (в разных проектах) — одно пространство PID: так реестр Claude видит соседей.
+    ns1 = pidns(claude_probe("readlink /proc/self/ns/pid"))
+    ns2 = pidns(claude_probe("readlink /proc/self/ns/pid", f"{HOME}/other/marked"))
+    assert ns1 == ns2, f"AI-SBX-13: окна в одном пространстве PID: {ns1} != {ns2}"
+    assert ns1 != machine.succeed(outside("readlink /proc/self/ns/pid")).strip(), "но не в пространстве хоста"
+    # Процесс, оставленный окном (как супервизор фоновых сессий), переживает окно.
+    bg = claude_probe("setsid sleep 600 >/dev/null 2>&1 </dev/null & echo bgpid=$!")
+    bgpid = found(r"bgpid=(\d+)", bg, 1)
+    assert "alive" in claude_probe(f"kill -0 {bgpid} && echo alive"), "AI-A20: фоновый процесс жив во втором окне"
+    # Рабочий каталог — проект; $HOME на запись; сокетов сессии хоста нет; сеть — песочницы.
+    out = claude_probe("pwd; touch $HOME/longlived-written; test -e /run/user/2000/agents || echo nohostrun")
+    assert f"{HOME}/other/free" in out and "nohostrun" in out, out
+    machine.succeed(f"test -e {HOME}/longlived-written")
+    machine.succeed("test -s /run/user/2000/agents/claude.json")  # контроль: на хосте каталог есть
+    out, r = probe_in("claude", f"{HOME}/other/free")
+    assert r["abstract"] == "CLOSED" and r["sens"] == "" and r["inet"] != "", f"сеть долгоживущей песочницы: {out}"
+    # Проект вне $HOME — отказ (в песочнице есть только $HOME).
+    machine.succeed("install -d -o agent -g agent /srv/outside-project")
+    status, out = launch("claude", "/srv/outside-project")
+    assert status != 0 and "внутри домашнего каталога" in out, out
+    # Остановка юнита останавливает всё пространство PID, в том числе фон.
+    machine.succeed(outside(f"{RT} systemctl --user stop {UNIT}"))
+    machine.wait_until_fails("pgrep -u agent -f 'sleep 600'", timeout=30)
+    assert_clean()
+    # Новый запуск песочницы: реестр живых процессов чистый (D23), прочее в ~/.claude цело.
+    as_agent(f"mkdir -p {HOME}/.claude/sessions {HOME}/.claude/projects/p")
+    as_agent(f"touch {HOME}/.claude/sessions/123.json {HOME}/.claude/sessions/123.abc.key {HOME}/.claude/sessions/keep.txt {HOME}/.claude/projects/p/s.jsonl")
+    claude_probe("true")
+    machine.fail(f"test -e {HOME}/.claude/sessions/123.json")
+    machine.fail(f"test -e {HOME}/.claude/sessions/123.abc.key")
+    machine.succeed(f"test -e {HOME}/.claude/sessions/keep.txt && test -e {HOME}/.claude/projects/p/s.jsonl")
+    machine.succeed(outside(f"{RT} systemctl --user stop {UNIT}"))
+    assert_clean()
     # dsh: режим — штатная переменная DSH_PERMISSION_MODE; флаги сочетаются в любом порядке.
     out, r = probe_in("dsh", f"{HOME}/other/free")
     assert r["dsmode"] == "danger-full-access", f"dsh autonomous: граница — песочница лаунчера: {out}"
