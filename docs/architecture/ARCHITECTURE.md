@@ -321,7 +321,7 @@ let n = config.flake.modules.nixos; in {
 
 **dev:** `editor-<р>` (N: пакет и переменная редактора по умолчанию — в одной области видимости, иначе переменная ссылается на отсутствующий в PATH бинарник (DEV-9); глобальный редактор предусмотрен DEV-1), `lsp-global` (H), `containers` (N+H), `databases` (H), `api-tools` (H, опц.), `pycharm` (H, опц.: необязательная JetBrains IDE для Python вне реестра приложений, DEV-9/AI-CMP-8).
 
-**office / media / gaming / ai:** `office-suite`, `mail-calendar`, `documents`, `communication`, `print-scan` (опц.); `video-player`, `browser`, `torrent`; `game-platform`, `compat-layer`, `game-optimizer`, `overlay`; `compute-cache`, `inference-service-<р>` (слот), `container-gpu`, `agents-tools`; подсистема ML добавляет `ai-facts`, `llm-gateway`, `code-context` (AI_SUBSYSTEM 2.2).
+**office / media / gaming / ai:** `office-suite`, `mail-calendar`, `documents`, `communication`, `print-scan` (опц.); `video-player`, `browser`, `torrent`; `game-platform`, `compat-layer`, `game-optimizer`, `overlay`; `compute-cache`, `inference-service-<р>` (слот), `container-gpu`, `agents-tools`; подсистема ML добавляет `ai-facts`, `llm-gateway`, `code-context`, `web-search-<р>` (слот), `mcp-jira` (AI_SUBSYSTEM 2.2, R9.23).
 
 **Пресеты хоста (nixos):** `base`, `laptop`, `workstation`, `server`, `vm` — по классу хоста; `<capability>` — системная часть возможности; `tunnel` — сетевая среда хоста (не capability, VPN_SUBSYSTEM ADR-25).
 **Пресеты пользователя (homeManager):** имена совпадают с capability (`desktop`, `development`, `office`, `media`, `gaming`, `ml`, `containers`).

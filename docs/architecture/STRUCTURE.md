@@ -118,7 +118,7 @@ nixos-config/
 | `shell` | командная строка пользователя | `shell-*`, `vcs-tools`, `terminal-*`, `dotfiles-link` |
 | `dev` | инструменты разработки | `editor-*`, `lsp-global`, `containers-*`, `databases` |
 | `office` `media` `gaming` | прикладные домены (capability с тем же именем) | `office-suite-*`, `video-player-*`, `game-platform-*` |
-| `ai` | ML и агенты | `ai-facts`, `inference-service-*`, `llm-gateway` |
+| `ai` | ML и агенты | `ai-facts`, `inference-service-*`, `llm-gateway`, `web-search-*`, `mcp-jira` |
 
 **Правило выбора домена.** Файл кладётся по тому, **что он есть**, а не по тому, **кто им пользуется**. Менеджер уведомлений — `desktop`, даже если нужен только игровому пользователю; кто его получит — решает пресет.
 
@@ -571,7 +571,7 @@ nixos-config/
 │   ├── gaming/               game-platform-steam  compat-layer-proton-ge
 │   │                         game-optimizer-gamemode  overlay-mangohud
 │   ├── ai/                   ai-facts  compute-cache  inference-service-ollama
-│   │                         container-gpu-nvidia  llm-gateway  agents-tools  code-context
+│   │                         container-gpu-nvidia  llm-gateway  web-search-searxng  mcp-jira  agents-tools  code-context
 │   │                         _inference-roles.nix
 │   ├── presets/              base  laptop  workstation  server  vm  user-base
 │   │                         desktop  development  office  media  gaming  ml
@@ -617,7 +617,7 @@ dotfiles/                     (отдельный репозиторий)
 | `office` | capability | — | office-suite-libreoffice, mail-calendar-thunderbird, documents-zathura, communication-telegram |
 | `media` | capability | browser-firefox (APP-3: политики браузера — на уровне NixOS), torrent-transmission (служба, ADR-43) | video-player-mpv, torrent-transmission (клиент) |
 | `gaming` | capability | game-platform-steam, compat-layer-proton-ge, game-optimizer-gamemode, overlay-mangohud | overlay-mangohud |
-| `ml` | capability | ai-facts, compute-cache, inference-service-ollama, container-gpu-nvidia, llm-gateway | llm-gateway, agents-tools, code-context |
+| `ml` | capability | ai-facts, compute-cache, inference-service-ollama, container-gpu-nvidia, llm-gateway, web-search-searxng, mcp-jira | llm-gateway, agents-tools, code-context |
 | `tunnel` | среда хоста | tunnel-facts, tunnel-xray, killswitch, dns-resolver, route-switch | — |
 
 Класс слота рабочего стола выбирается так: если NixOS-модуль даёт только

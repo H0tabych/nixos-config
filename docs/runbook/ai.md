@@ -5,7 +5,8 @@
 
 Владельцы механизмов: `ai/inference-service-ollama` (инференс, `inference-release`,
 гибернация), `ai/llm-gateway` (шлюз, секреты пользователя), `ai/agents-tools`
-(лаунчер и песочница), `ai/code-context` (MCP и структурный поиск).
+(лаунчер и песочница), `ai/code-context` (MCP и структурный поиск), `ai/web-search-searxng` и
+`ai/mcp-jira` (серверы MCP-шлюза).
 
 > Команды с `sudo`, `just test`/`just boot` и удаление данных выполняет человек
 > (ROADMAP W10). Значения ключей здесь не приводятся и в чат не передаются.
@@ -188,6 +189,7 @@ config/hooks/info подмодулей, указатели связанных д
 | Ключ | Назначение |
 |---|---|
 | `ai.gateway.providerKey.<id>` | Ключ провайдера по нейтральному id из `my.ai.gateway.providers` (ADR-45); читает только root |
+| `ai.gateway.mcpToken.<id>` | Токен сервера MCP-шлюза (`github`, `jira`) по нейтральному id из `my.ai.gateway.mcp` (AI-GW-14, R9.23); читает только root, агент его не получает. **Ключ должен быть в файле до `just test`**: без него sops не активируется |
 
 Ключи доступа и вход в управляющий API шлюза в sops не хранятся: их генерирует служба (раздел 1).
 
@@ -507,3 +509,43 @@ AI-A4 (игра) и проверка CUDA без GSP (A7).
   `AGENTS.md` (в том числе вложенный в подкаталоге) и один набор навыков; `/step`, `/gate`, `/rule`
   появляются как навыки в Claude Code; в `agents-init` из нового пустого каталога создаются
   `AGENTS.md`, `CLAUDE.md` с импортом, `.agents/skills/` и симлинк `.claude/skills`.
+
+## MCP и поиск (R9.23, AI-CTX-3/4, AI-GW-14, AI-A16)
+
+- **Схема.** Локальные серверы без секретов (`lsp-*`, `playwright`) агент запускает сам в песочнице;
+  серверы с секретом и удалённые (`github`, `jira`) и поиск (`web-search`) запускает шлюз — под
+  учётной записью службы. Агент видит их одним входом `gateway`: `POST /mcp`, заголовок `x-bf-vk` с
+  ключом `claude-online`; список инструментов — только разрешённые ключу
+  (`my.ai.gateway.agents.claude.mcp`). Ключ `offline` инструментов не получает.
+- **Claude получает список плагином** `ai-tools` из `dotfiles/ai/generated/claude-plugin/`; адрес и
+  ключ плагин берёт из окружения (`AI_MCP_URL`, `AI_MCP_KEY` — их выставляет лаунчер). Разово, внутри
+  песочницы Claude, **реальным путём рабочей копии dotfiles** (не через симлинк `~/.config/ai`):
+
+  ```sh
+  claude plugin marketplace add <рабочая копия dotfiles>/ai/generated/claude-plugin
+  claude plugin install ai-tools@ai-local
+  ```
+
+  Каталог читается на месте; после правки списка (`python3 ai/gen/gen.py`) — новое окно или
+  `/reload-plugins`. Отладка пустых переменных: `claude --debug-file <файл>`, строка
+  `never expanded toward a remote server` — Claude читает «учётные» имена (`ANTHROPIC_API_KEY`,
+  `NPM_TOKEN`, …) пустыми в `url`/`headers`.
+- **Добавить сервер шлюза:** запись в `my.ai.gateway.mcp.<id>` (хост или фича-реализация), id — в
+  `my.ai.gateway.agents.<агент>.mcp`, токен — `just sops-edit secrets/users/<имя>.yaml`
+  (`ai.gateway.mcpToken.<id>`), затем `just build` → `nvd diff` → `just test` → `just boot`.
+  Сервер без токена вычёркивается, юнит не падает (в журнале: «нет секрета сервера MCP»).
+- **Перевыпуск токенов (D19):** старые токены `github` и `jira` лежали открытым текстом в
+  `~/.claude.json` и в снимках `home` — отозвать у поставщика, выпустить новые (GitHub — права
+  «только чтение»; Jira — личный токен), внести через `sops-edit`; записи `github`, `jira`,
+  `playwright` удалить из `~/.claude.json`.
+- **Поиск:** SearXNG на `127.0.0.1:8888`, `curl 'http://127.0.0.1:8888/search?q=test&format=json'`.
+  Журнал: `journalctl -u searx`. Секрет службы — `/var/lib/searx-secret/env` (создаёт юнит
+  `searx-secret`, при потере создаётся заново).
+- **Открытое (ПРОВЕРИТЬ):** (1) у DeepSeek Harness не проверен формат подключения MCP — `dsh-*` ключи
+  инструментов не имеют (отступление от AI-A16); (2) попадают ли `AI_MCP_URL`/`AI_MCP_KEY` в фоновые
+  сессии Claude (`claude agents`) и в `--resume`: окружение даёт окно, поднявшее супервизор; (3)
+  достижимость адреса Jira (внутренняя сеть за корпоративным VPN) из юнита шлюза: M2 — маршруты хоста,
+  M1 — прокси корпоративные сети не покрывает; (4) заголовок `X-MCP-Readonly` удалённого сервера
+  GitHub — по его документации, надёжная защита — токен с правами «только чтение».
+- **Откат:** предыдущее поколение NixOS; убрать `web-search-searxng`/`mcp-jira` из пресета `ml`;
+  dotfiles — `git revert`; `claude plugin disable ai-tools@ai-local`.
