@@ -5,10 +5,15 @@
 # переключателя с именем профиля ac/battery. Источники power_supply опрашиваются
 # upower по типу устройства (`line_power_*`), а не по имени конкретного адаптера
 # (ACAD и т. п.) — без констант хоста, тем же правилом, что и у самого DESK-9
-# скрипта. При старте юнита (вход в сессию) профиль пересчитывается напрямую,
-# не через идемпотентную проверку переключателя — это и снимает ручной
-# override solid/game, оставленный предыдущей сессией (DSN-PWR-2: "снимаются
-# при выходе из сессии").
+# скрипта. При старте юнита (вход в сессию) профиль ставится по источнику напрямую —
+# это и снимает ручной solid/game, оставленный предыдущей сессией (DSN-PWR-2:
+# "снимаются при выходе из сессии").
+# R9.27 (D25): `upower --monitor` сообщает о КАЖДОМ изменении устройств (процент заряда
+# и т. п.), а не только о смене источника; раньше любое событие откатывало ручной
+# solid/game через несколько минут. Теперь реакция — только на смену источника, и только
+# если профиль автоматический (ac/battery); ручной живёт до выхода из сеанса или до
+# возврата вручную (`profile toggle`, `profile auto`). Источник пишется в
+# $XDG_STATE_HOME/glass-tide/power — по нему переключатель находит `auto` (DSN-PWR-7).
 # Зависимости: —
 _: {
   flake.modules.homeManager.effects-profile =
@@ -16,9 +21,16 @@ _: {
     let
       watch = pkgs.writeShellApplication {
         name = "effects-profile-watch";
-        runtimeInputs = [ pkgs.upower ];
+        runtimeInputs = [
+          pkgs.upower
+          pkgs.coreutils
+          pkgs.gnugrep
+        ];
         text = ''
           profile_script="$HOME/.config/hypr/scripts/profile"
+          state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/glass-tide"
+          power_file="$state_dir/power"
+          mkdir -p "$state_dir"
 
           detect() {
             for dev in $(upower -e); do
@@ -34,10 +46,18 @@ _: {
             echo battery
           }
 
-          "$profile_script" "$(detect)"
+          last=$(detect)
+          printf '%s\n' "$last" > "$power_file"
+          "$profile_script" "$last"
 
           upower --monitor | while read -r _; do
-            "$profile_script" "$(detect)"
+            now=$(detect)
+            [ "$now" != "$last" ] || continue
+            last=$now
+            printf '%s\n' "$now" > "$power_file"
+            case "$("$profile_script")" in
+              ac | battery) "$profile_script" "$now" ;;
+            esac
           done
         '';
       };
