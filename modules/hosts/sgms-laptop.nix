@@ -143,7 +143,7 @@ in
     # AI-GW-6: лимит на каждый ключ с облачными правами (решение владельца 2026-11-06). Считается
     # по ценам выше; что делать при «402 Budget exceeded» — docs/runbook/ai.md, «Бюджет шлюза».
     my.ai.gateway.budget = {
-      maxUSD = 10;
+      maxUSD = 100;
       resetDuration = "1M";
     };
 
