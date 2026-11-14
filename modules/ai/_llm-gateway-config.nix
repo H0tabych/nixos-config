@@ -17,8 +17,8 @@
 #     затрагивает (AI-A13, A18);
 #   - governance.virtual_keys[] — по ключу на пару «агент × режим» (AI-GW-4):
 #     allow_all_providers = false, провайдеры перечислены в provider_configs, инструменты
-#     (mcp_configs) пусты — по умолчанию запрещено всё; ключ `offline` получает только
-#     локальный провайдер;
+#     (mcp_configs) — только серверы агента, `online` (AI-GW-14); ключ `offline` — только
+#     локальный провайдер, запрещено всё остальное;
 #   - governance.budgets[] — лимит расходов на каждый ключ с облачными правами (AI-GW-6, если
 #     задан `budget.maxUSD`); раздел есть всегда, пустой — снимает прежние лимиты из базы;
 #   - governance.routing_rules[] — индирекция «роль → провайдер + модель» (AI-GW-2) и
@@ -44,6 +44,7 @@
   cloudRoles, # my.ai.gateway.cloudRoles: роль → { provider, model }
   providers, # my.ai.gateway.providers: id → { type, nativeModels, baseUrl }
   agents, # my.ai.gateway.agents: агент → { cloudRoles, localRoles, nativeProvider }
+  mcp, # MCP-шлюз: { section, keys } — раздел конфига и права ключей (AI-GW-14)
   budget, # my.ai.gateway.budget: { maxUSD, resetDuration }
   frameworkOverride ? { }, # добавка к конфигу, сливается рекурсивно (тесты без сети: параметры моделей)
   proxyUrl ? null, # адрес HTTP-входа туннеля (режим M1, NET-10); null — прокси не нужен
@@ -177,7 +178,7 @@ let
         value = "@KEY_${keyId name mode}@";
         allow_all_providers = false;
         provider_configs = providerConfigs mode agent;
-        mcp_configs = [ ]; # инструменты — только по явному разрешению (R9.20)
+        mcp_configs = mcp.keys name mode; # инструменты — только разрешённые агенту (AI-GW-14)
       }) modes
     ) agents
   );
@@ -228,6 +229,8 @@ lib.recursiveUpdate frameworkOverride (
         };
       };
     };
+
+    mcp = mcp.section;
 
     governance = {
       # Аутентификация management-API (без неё — известные RCE в старых версиях);

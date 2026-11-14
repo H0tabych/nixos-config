@@ -73,6 +73,17 @@ let
       localRoles = [ "local-chat" ];
       nativeProvider = null;
     };
+    # AI-GW-14: агент только с инструментами (как claude по подписке): ролей нет.
+    mcpagent = {
+      cloudRoles = [ ];
+      localRoles = [ ];
+      nativeProvider = null;
+      mcp = [
+        "fake-http"
+        "fake-stdio"
+        "empty-secret"
+      ];
+    };
     # Свой бюджет для проверки учёта по ценам (AI-GW-6, ADR-49) — не трогает ключи dsh.
     pricetest = {
       cloudRoles = [ "cost-autonomous" ];
@@ -80,8 +91,53 @@ let
       nativeProvider = null;
     };
   };
+  # MCP-шлюз (AI-GW-14): фальшивый http-сервер (9002, с секретом в заголовке), фальшивый stdio-сервер
+  # (секрет и несекретная переменная доходят до него через обёртку) и сервер с ПУСТЫМ секретом —
+  # его вычёркивает служба, юнит не `failed`.
+  mcpPolicy =
+    lib.mapAttrs
+      (
+        _: s:
+        {
+          command = null;
+          args = [ ];
+          env = { };
+          url = null;
+          headers = { };
+          secret = false;
+          secretEnv = null;
+          secretHeader = "Authorization";
+          secretPrefix = "Bearer ";
+        }
+        // s
+      )
+      {
+        fake-http = {
+          type = "http";
+          url = "http://127.0.0.1:9002/mcp";
+          secret = true;
+        };
+        fake-stdio = {
+          type = "stdio";
+          command = "${fakeMcpStdio}";
+          env.FAKE_PLAIN = "plain-value";
+          secret = true;
+          secretEnv = "FAKE_SECRET";
+        };
+        empty-secret = {
+          type = "stdio";
+          command = "${fakeMcpStdio}";
+          secret = true;
+          secretEnv = "FAKE_SECRET";
+        };
+      };
+  mcpBuild = import ../modules/ai/_llm-gateway-mcp.nix { inherit lib pkgs; } {
+    policy = mcpPolicy;
+    inherit agents;
+  };
   template = buildConfig {
     inherit providers cloudRoles agents;
+    mcp = mcpBuild;
     budget = {
       maxUSD = 10;
       resetDuration = "1M";
@@ -115,9 +171,88 @@ let
       "localonly-offline"
       "pricetest-online"
       "pricetest-offline"
+      "mcpagent-online"
+      "mcpagent-offline"
     ];
     credPath = id: "/etc/test-secrets/provider-${id}";
+    mcpSecrets = mcpBuild.secrets;
+    mcpCredPath = id: "/etc/test-secrets/mcp-${id}";
   };
+
+  fakeMcpStdio = pkgs.writers.writePython3 "fake-mcp-stdio" { doCheck = false; } ''
+    import json
+    import os
+    import sys
+
+    for line in sys.stdin:
+        if not line.strip():
+            continue
+        m = json.loads(line)
+        mid, method = m.get("id"), m.get("method")
+        if mid is None:
+            continue
+        if method == "initialize":
+            res = {"protocolVersion": m["params"]["protocolVersion"],
+                   "capabilities": {"tools": {}},
+                   "serverInfo": {"name": "fake-stdio", "version": "0"}}
+        elif method == "tools/list":
+            res = {"tools": [{"name": "whoami", "description": "env",
+                              "inputSchema": {"type": "object", "properties": {}}}]}
+        elif method == "tools/call":
+            res = {"content": [{"type": "text", "text": json.dumps({
+                "secret": os.environ.get("FAKE_SECRET"),
+                "plain": os.environ.get("FAKE_PLAIN"),
+                "home": os.environ.get("HOME"),
+            })}]}
+        else:
+            res = {}
+        sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": mid, "result": res}) + "\n")
+        sys.stdout.flush()
+  '';
+
+  # Фальшивый удалённый MCP-сервер (streamable HTTP): пишет заголовок Authorization в журнал.
+  fakeMcpHttp = pkgs.writers.writePython3 "fake-mcp-http" { doCheck = false; } ''
+    import json
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            m = json.loads(self.rfile.read(n) or b"{}")
+            with open("/var/log/fake-mcp-http.log", "a") as f:
+                f.write(json.dumps({"method": m.get("method"),
+                                    "auth": self.headers.get("Authorization")}) + "\n")
+            mid, method = m.get("id"), m.get("method")
+            if mid is None:
+                self.send_response(202)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            if method == "initialize":
+                res = {"protocolVersion": m["params"]["protocolVersion"],
+                       "capabilities": {"tools": {}},
+                       "serverInfo": {"name": "fake-http", "version": "0"}}
+            elif method == "tools/list":
+                res = {"tools": [{"name": "ping", "description": "p",
+                                  "inputSchema": {"type": "object", "properties": {}}}]}
+            elif method == "tools/call":
+                res = {"content": [{"type": "text", "text": "pong"}]}
+            else:
+                res = {}
+            out = json.dumps({"jsonrpc": "2.0", "id": mid, "result": res}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+        def log_message(self, *a):
+            pass
+
+
+    ThreadingHTTPServer(("127.0.0.1", 9002), H).serve_forever()
+  '';
 
   fakeProvider = pkgs.writers.writePython3 "fake-provider" { doCheck = false; } ''
     import json
@@ -176,6 +311,7 @@ let
   # прежние лимиты в базе), цены по-прежнему подаются шлюзу.
   noBudget = buildConfig {
     inherit providers cloudRoles agents;
+    mcp = mcpBuild;
     budget = {
       maxUSD = null;
       resetDuration = "1M";
@@ -226,6 +362,24 @@ pkgs.testers.runNixOSTest {
         text = "";
         mode = "0400";
       };
+      "test-secrets/mcp-fake-http" = {
+        text = "fake-mcp-token\n";
+        mode = "0400";
+      };
+      "test-secrets/mcp-fake-stdio" = {
+        text = "fake-stdio-secret\n";
+        mode = "0400";
+      };
+      # Пустой секрет сервера MCP: клиент вычёркивается, служба стартует (AI-GW-9, AI-GW-14).
+      "test-secrets/mcp-empty-secret" = {
+        text = "";
+        mode = "0400";
+      };
+    };
+
+    systemd.services.fake-mcp-http = {
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig.ExecStart = fakeMcpHttp;
     };
 
     systemd.services.fake-provider = {
@@ -234,7 +388,10 @@ pkgs.testers.runNixOSTest {
     };
 
     systemd.services.llm-gateway-alice = service // {
-      after = service.after ++ [ "fake-provider.service" ];
+      after = service.after ++ [
+        "fake-provider.service"
+        "fake-mcp-http.service"
+      ];
     };
   };
 
@@ -247,6 +404,7 @@ pkgs.testers.runNixOSTest {
     KEYS = "/run/llm-gateway/alice"
 
     machine.wait_for_unit("fake-provider.service")
+    machine.wait_for_unit("fake-mcp-http.service")
     machine.wait_for_unit("llm-gateway-alice.service")
     machine.wait_for_open_port(PORT)
 
@@ -367,7 +525,8 @@ pkgs.testers.runNixOSTest {
     machine.fail("su alice -c 'ls /var/lib/private/llm-gateway-alice'")
     machine.fail("su alice -c 'ls /var/lib/llm-gateway-alice'")
     assert machine.succeed(f"ls {KEYS}").split() == sorted(
-        ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline", "pricetest-online", "pricetest-offline"]
+        ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline",
+         "pricetest-online", "pricetest-offline", "mcpagent-online", "mcpagent-offline"]
     ), "пользователю публикуются только ключи доступа"
     machine.fail(f"grep -r fake-provider-key {KEYS}")
     # Другой пользователь (без ml, USER-7) не читает чужие ключи и каталог.
@@ -379,7 +538,8 @@ pkgs.testers.runNixOSTest {
     # --- Права ключа в самом конфиге (root видит): инструменты пусты, бюджет есть (AI-GW-6, ADR-45).
     cfg = json.loads(machine.succeed("cat /var/lib/private/llm-gateway-alice/config.json"))
     vks = {v["id"]: v for v in cfg["governance"]["virtual_keys"]}
-    assert all(v["mcp_configs"] == [] and not v["allow_all_providers"] for v in vks.values())
+    assert all(v["mcp_configs"] == [] for k, v in vks.items() if k != "mcpagent-online")
+    assert all(not v["allow_all_providers"] for v in vks.values())
     assert "spare" not in cfg["providers"], "провайдер без ключа должен быть вычеркнут"
     budgets = {b["virtual_key_id"]: b for b in cfg["governance"]["budgets"]}
     assert budgets["dsh-online"]["max_limit"] == 10 and "localonly-online" not in budgets, budgets
@@ -401,6 +561,77 @@ pkgs.testers.runNixOSTest {
     assert codes[0] == 200 and codes[-1] == 402, f"бюджет по ценам из политики: {codes} {body}"
     assert "budget" in body.lower(), body
     denied("cost-autonomous", key("pricetest-online"), "исчерпанный бюджет (402)")
+
+    # --- MCP-шлюз (AI-GW-14): ключ видит только разрешённые ему инструменты.
+    def mcp(method, token, params=None):
+        """JSON-RPC к /mcp; возвращает (код ответа, разобранное тело или текст)."""
+        hdr = f"-H 'x-bf-vk: {token}'" if token else ""
+        body = {"jsonrpc": "2.0", "id": 1, "method": method}
+        if params:
+            body["params"] = params
+        out = machine.succeed(
+            f"curl -s -m 30 -o /tmp/mcp -w '%{{http_code}}' {hdr} -H 'Content-Type: application/json' "
+            f"-d {shlex.quote(json.dumps(body))} http://127.0.0.1:{PORT}/mcp; echo; cat /tmp/mcp"
+        )
+        code, _, rest = out.partition("\n")
+        try:
+            return int(code), json.loads(rest)
+        except Exception:
+            return int(code), rest
+
+    def mcp_tools(token):
+        code, body = mcp("tools/list", token)
+        assert code == 200, (code, body)
+        return sorted(t["name"] for t in body["result"]["tools"])
+
+    machine.wait_until_succeeds(
+        "test $(curl -s -m 10 -H 'x-bf-vk: " + key("mcpagent-online") + "' "
+        "-H 'Content-Type: application/json' "
+        "-d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' "
+        f"http://127.0.0.1:{PORT}/mcp | jq '.result.tools | length') -ge 2",
+        timeout=90,
+    )
+    names = mcp_tools(key("mcpagent-online"))
+    print("MCP, инструменты ключа mcpagent-online:", names)
+    assert any(n.startswith("fake_http") for n in names), names
+    assert any(n.startswith("fake_stdio") for n in names), names
+    assert not any(n.startswith("empty_secret") for n in names), f"сервер без секрета вычеркнут: {names}"
+    # Остальные ключи инструментов не видят (по умолчанию запрещено всё; offline — без инструментов).
+    for other in ["mcpagent-offline", "dsh-online", "dsh-offline", "localonly-online"]:
+        code, body = mcp("tools/list", key(other))
+        shown = body["result"]["tools"] if code == 200 and isinstance(body, dict) else []
+        assert shown == [], f"{other} видит инструменты: {code} {body}"
+    code, body = mcp("tools/list", None)
+    assert code in (401, 403), f"/mcp без ключа: {code} {body}"
+    code, body = mcp("tools/list", "sk-bf-wrong")
+    assert code in (401, 403), f"/mcp с чужим ключом: {code} {body}"
+    # Вызов недоступного ключу инструмента — отказ.
+    code, body = mcp("tools/call", key("dsh-online"), {"name": "fake_stdio_whoami", "arguments": {}})
+    assert not (code == 200 and isinstance(body, dict) and "result" in body and not body["result"].get("isError")), (
+        f"dsh-online вызвал чужой инструмент: {code} {body}"
+    )
+
+    # stdio: секрет из учётных данных и несекретная переменная дошли до сервера через обёртку;
+    # HOME — в состоянии службы (DynamicUser).
+    wid = [n for n in names if n.startswith("fake_stdio")][0]
+    code, body = mcp("tools/call", key("mcpagent-online"), {"name": wid, "arguments": {}})
+    assert code == 200, (code, body)
+    seen = json.loads(body["result"]["content"][0]["text"])
+    assert seen["secret"] == "fake-stdio-secret" and seen["plain"] == "plain-value", seen
+    assert seen["home"].startswith("/var/lib/"), seen
+
+    # http: токен сервера подставлен службой в заголовок; у агента его нет.
+    hid = [n for n in names if n.startswith("fake_http")][0]
+    code, body = mcp("tools/call", key("mcpagent-online"), {"name": hid, "arguments": {}})
+    assert code == 200 and body["result"]["content"][0]["text"] == "pong", (code, body)
+    assert "Bearer fake-mcp-token" in machine.succeed("cat /var/log/fake-mcp-http.log"), "заголовок Authorization"
+    machine.fail(f"grep -rE 'fake-mcp-token|fake-stdio-secret' {KEYS}")
+    cfg = json.loads(machine.succeed("cat /var/lib/private/llm-gateway-alice/config.json"))
+    assert "empty_secret" not in [c["name"] for c in cfg["mcp"]["client_configs"]], "клиент без секрета не вычеркнут"
+    machine.succeed("systemctl is-active llm-gateway-alice.service")
+    # Секрет stdio-сервера не попал ни в конфиг, ни в argv процессов.
+    assert "fake-stdio-secret" not in json.dumps(cfg), "секрет stdio-сервера в конфиге шлюза"
+    machine.fail("ps -eo args | grep -F fake-stdio-secret | grep -v grep")
 
     # --- Постоянство ключей и возврат после перезапуска.
     before = {n: key(n) for n in ["dsh-online", "localonly-offline"]}

@@ -192,7 +192,7 @@ pkgs.testers.runNixOSTest {
         f"'export AI_GATEWAY_KEYS_DIR=/run/llm-gateway/agent' > {HOME}/.config/machine.d/ai-gateway-env"
     )
     machine.succeed("install -d -m755 /run/llm-gateway /run/llm-gateway/agent")
-    for key in ["dsh-online", "dsh-offline"]:
+    for key in ["dsh-online", "dsh-offline", "claude-online", "claude-offline"]:
         machine.succeed(f"echo {key}-key > /run/llm-gateway/agent/{key} && chown agent:agent /run/llm-gateway/agent/{key}")
     ROOTS = f"{HOME}/.config/ai/roots.toml"
     as_agent(f"printf '%s\n' '[[root]]' 'path = \"~/work\"' 'cloud = \"deny\"' > {ROOTS}")
@@ -215,6 +215,8 @@ pkgs.testers.runNixOSTest {
     echo "dskey=$(printenv DEEPSEEK_API_KEY)"
     echo "dsurl=$(printenv DEEPSEEK_BASE_URL)"
     echo "dsmode=$(printenv DSH_PERMISSION_MODE)"
+    echo "mcpkey=$(printenv AI_MCP_KEY)"
+    echo "mcpurl=$(printenv AI_MCP_URL)"
     """
 
 
@@ -318,7 +320,9 @@ pkgs.testers.runNixOSTest {
     assert status != 0 and "offline не запускается" in out, f"claude в offline: отказ: {out}"
     machine.fail(f"test -e {HOME}/work/p1/stub-started-claude")
     out, r = probe_in("claude", f"{HOME}/other/free")
-    assert r["vpnname"] != "" and r["inet"] != "" and r["dskey"] == "", f"claude в online: сеть хоста, ключа шлюза нет: {out}"
+    assert r["vpnname"] != "" and r["inet"] != "" and r["dskey"] == "", f"claude в online: сеть хоста, ключа модели шлюза нет: {out}"
+    # R9.23 (AI-GW-14): ключ шлюза у claude — только для инструментов, значением в окружении (AI_MCP_KEY).
+    assert r["mcpkey"] == "claude-online-key" and r["mcpurl"] == "http://127.0.0.1:11501/mcp", f"MCP-ключ claude: {out}"
 
     # === Режимы агента (AI-AGT-1, AI-AGT-9): autonomous по умолчанию, `--controlled` ====
     # claude: в autonomous флага режима нет (настройки пользователя), в controlled — manual.
@@ -328,12 +332,13 @@ pkgs.testers.runNixOSTest {
     out, r = probe_in("claude --controlled", f"{HOME}/other/free")
     assert "режим controlled" in out, out
     assert "--permission-mode\nmanual" in machine.succeed(f"cat {HOME}/other/free/stub-args-claude")
-    # Список MCP не съедает аргументы пользователя (подкоманду, текст задачи).
-    as_agent(f"mkdir -p {HOME}/.config/ai/generated && echo '{{}}' > {HOME}/.config/ai/generated/claude.mcp.json")
+    # Список MCP — плагин в штатной конфигурации агента (R9.23), а не флаг запуска: флаги окна не
+    # восстанавливаются при `--resume`. Аргументы пользователя идут первыми; ключ — не в argv.
     launch("claude -- 'сделай что-нибудь'", f"{HOME}/other/free")
     args = machine.succeed(f"cat {HOME}/other/free/stub-args-claude").splitlines()
-    assert f"--mcp-config={HOME}/.config/ai/generated/claude.mcp.json" in args, f"MCP одним аргументом: {args}"
-    assert "--mcp-config" not in args and args[0] == "сделай что-нибудь", f"задача — первый аргумент, флаги после: {args}"
+    assert not any(a.startswith("--mcp-config") for a in args), f"список MCP флагом запуска не передаётся: {args}"
+    assert args[0] == "сделай что-нибудь", f"задача — первый аргумент: {args}"
+    assert not any("claude-online-key" in a for a in args), f"ключ шлюза не должен попасть в argv: {args}"
     launch("claude -- attach abc123", f"{HOME}/other/free")
     args = machine.succeed(f"cat {HOME}/other/free/stub-args-claude").splitlines()
     assert args[:2] == ["attach", "abc123"], f"подкоманда агента идёт первой: {args}"
@@ -372,6 +377,8 @@ pkgs.testers.runNixOSTest {
     machine.succeed("test -s /run/user/2000/agents/claude.json")  # контроль: на хосте каталог есть
     out, r = probe_in("claude", f"{HOME}/other/free")
     assert r["abstract"] == "CLOSED" and r["sens"] == "" and r["inet"] != "", f"сеть долгоживущей песочницы: {out}"
+    # Вход в долгоживущую песочницу несёт ключ инструментов шлюза (окружение окна, fd 3, не argv).
+    assert r["mcpkey"] == "claude-online-key", f"MCP-ключ в долгоживущей песочнице: {out}"
     # Проект вне $HOME — отказ (в песочнице есть только $HOME).
     machine.succeed("install -d -o agent -g agent /srv/outside-project")
     status, out = launch("claude", "/srv/outside-project")

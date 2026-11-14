@@ -14,10 +14,11 @@
 { lib, claudeCode }:
 {
   name = "claude";
-  # Вход по подписке мимо шлюза (AI-GW-11): ключа шлюза нет, в `offline` не запускается
-  # (облако недоступно, AI-SBX-5).
+  # Вход по подписке мимо шлюза (AI-GW-11): запросы модели шлюз не обслуживает, в `offline`
+  # не запускается (облако недоступно, AI-SBX-5). Ключ шлюза (`claude-online`) нужен только
+  # для инструментов MCP-шлюза (AI-GW-14, R9.23) — как у `dsh`, лаунчер читает его значением.
   subscription = true;
-  gatewayKey = false;
+  gatewayKey = true;
 
   longLived = {
     sandboxOpts = [ "--home-rw" ];
@@ -45,15 +46,17 @@
     )
     # Известные файлы агента в проекте (AI-AGT-9): отчёт лаунчера помечает их «файл агента».
     project_files=$'.claude/settings.local.json|личные настройки Claude Code (держите в .gitignore)\nCLAUDE.local.md|личные инструкции Claude Code (держите в .gitignore)'
-    # Список MCP подсистемы (AI-CTX-3) — к MCP пользователя, без --strict-mcp-config:
-    # строгий режим отключил бы плагины и подключения аккаунта (ADR-47). Определения MCP
-    # из проекта по-прежнему подтверждаются человеком (AI-SBX-9) — решает само приложение.
-    if [ -r "$HOME/.config/ai/generated/claude.mcp.json" ]; then
-      # Флаги адаптера — ПОСЛЕ аргументов пользователя (`tail_args`): подкоманда
-      # (`daemon`, `attach`, `agents`) распознаётся только первым словом, а флаг впереди
-      # превращает её в текст задачи (ПРОВЕРЕНО на машине). Форма с `=`: `--mcp-config`
-      # принимает несколько значений и без `=` съедает следующие аргументы как пути.
-      tail_args+=("--mcp-config=$HOME/.config/ai/generated/claude.mcp.json")
+    # Список MCP подсистемы (AI-CTX-3) — плагин `ai-tools` из dotfiles в штатной конфигурации
+    # Claude (REGISTRY.md, запись `ai`), а не флаг запуска: флаги окна не восстанавливаются при
+    # `--resume` и в фоновых сессиях (ADR-48). Без --strict-mcp-config: строгий режим отключил
+    # бы плагины и подключения аккаунта (ADR-47); MCP из проекта по-прежнему подтверждает
+    # человек (AI-SBX-9) — решает само приложение. Плагин берёт адрес и ключ входа MCP-шлюза из
+    # окружения (AI_MCP_URL, AI_MCP_KEY): ключ — значением, не в argv и не в файле.
+    # Имя переменной не «учётное» для Claude Code (такие читаются пустыми в url/headers).
+    if [ -n "''${AI_GATEWAY_URL:-}" ] && [ -n "$gw_key" ]; then
+      export AI_MCP_KEY="$gw_key"
+      sandbox_opts+=(--pass-env AI_MCP_KEY)
+      extra_env+=(--env "AI_MCP_URL=$AI_GATEWAY_URL/mcp")
     fi
     # Режимы (AI-AGT-1): `autonomous` — как задумано разработчиками (разрешения из
     # настроек пользователя в ~/.claude, флага нет); `controlled` — подтверждение каждой

@@ -29,6 +29,8 @@
   providers, # my.ai.gateway.providers: id → { type, … } (имя в конфиге шлюза — тип)
   keyIds, # id ключей доступа: "<агент>-<режим>"
   credPath, # id провайдера → путь к файлу секрета
+  mcpSecrets ? [ ], # серверы MCP-шлюза с секретом: [ { id, name } ] (AI-GW-14)
+  mcpCredPath ? (_: null), # id сервера MCP → путь к файлу секрета
   extraEnvironment ? { },
 }:
 let
@@ -62,16 +64,24 @@ let
       mark = "@ADMIN_PASS@";
     }
   ];
-  allVars = keyVars ++ provVars ++ adminVars;
+  mcpVars = lib.imap0 (i: s: {
+    var = "m${toString i}";
+    mark = "@MCP_${s.id}@";
+    inherit (s) id name;
+  }) mcpSecrets;
+  allVars = keyVars ++ provVars ++ mcpVars ++ adminVars;
   substitute = lib.concatMapStringsSep " | " (
     v: "sub(\"${v.mark}\"; (" + "$" + v.var + " | rtrimstr(\"\\n\")))"
   ) allVars;
 
   filter = pkgs.writeText "${unit}.jq" ''
     def alive($p): ($dead | index($p) | not);
+    def aliveMcp($n): ($deadmcp | index($n) | not);
     .providers |= with_entries(select(.key as $k | alive($k)))
     | .governance.routing_rules |= map(select(all(.targets[]; alive(.provider))))
     | .governance.virtual_keys |= map(.provider_configs |= map(select(alive(.provider))))
+    | .mcp.client_configs |= map(select(aliveMcp(.name)))
+    | .governance.virtual_keys |= map(.mcp_configs |= map(select(aliveMcp(.mcp_client_name))))
     | walk(if type == "string" then ${substitute} else . end)
   '';
 
@@ -109,7 +119,21 @@ let
     '') provVars}
     deadjson=$(jq -cn '$ARGS.positional' --args ''${dead[@]+"''${dead[@]}"})
 
-    jq "''${args[@]}" --argjson dead "$deadjson" -f ${filter} ${templateFile} \
+    # Серверы MCP-шлюза без секрета вычёркиваются так же, как провайдеры (AI-GW-9, AI-A14).
+    deadmcp=()
+    ${lib.concatMapStringsSep "\n" (v: ''
+      cred="$CREDENTIALS_DIRECTORY/mcp-${v.id}"
+      if [ -s "$cred" ] && grep -q '[^[:space:]]' "$cred"; then
+        args+=(--rawfile ${v.var} "$cred")
+      else
+        args+=(--arg ${v.var} "")
+        deadmcp+=(${lib.escapeShellArg v.name})
+        echo "llm-gateway: нет секрета сервера MCP ${v.id} — его инструменты недоступны (AI-GW-14)" >&2
+      fi
+    '') mcpVars}
+    deadmcpjson=$(jq -cn '$ARGS.positional' --args ''${deadmcp[@]+"''${deadmcp[@]}"})
+
+    jq "''${args[@]}" --argjson dead "$deadjson" --argjson deadmcp "$deadmcpjson" -f ${filter} ${templateFile} \
       > "$state/config.json.new"
     mv "$state/config.json.new" "$state/config.json"
   '';
@@ -146,7 +170,9 @@ in
     DynamicUser = true;
     StateDirectory = unit;
     StateDirectoryMode = "0700";
-    LoadCredential = map (id: "provider-${id}:${credPath id}") providerIds;
+    LoadCredential =
+      map (id: "provider-${id}:${credPath id}") providerIds
+      ++ map (s: "mcp-${s.id}:${mcpCredPath s.id}") mcpSecrets;
     ExecStartPre = [
       "${prepare}"
       "+${publish}"

@@ -11,6 +11,11 @@
 _: {
   flake.modules.nixos.ai-facts =
     { lib, ... }:
+    let
+      opt =
+        type: default: description:
+        lib.mkOption { inherit type default description; };
+    in
     {
       options.my.ai = {
         inference = {
@@ -44,6 +49,19 @@ _: {
           type = lib.types.attrsOf lib.types.str;
           default = { };
           description = "Роль → локальная модель. Вычисляется фичей inference-service, читает llm-gateway.";
+        };
+
+        search = {
+          host = lib.mkOption {
+            type = lib.types.str;
+            default = "127.0.0.1";
+            description = "Loopback-адрес службы поиска в сети (слот web-search, NET-4).";
+          };
+          port = lib.mkOption {
+            type = lib.types.port;
+            default = 8888;
+            description = "Порт службы поиска.";
+          };
         };
 
         gateway = {
@@ -157,6 +175,11 @@ _: {
                     default = null;
                     description = "Для агента, привязанного к семейству моделей (AI-ROLE-5): id провайдера, чьи `nativeModels` он вправе вызывать в режиме `online`.";
                   };
+                  mcp = lib.mkOption {
+                    type = lib.types.listOf lib.types.str;
+                    default = [ ];
+                    description = "Серверы MCP-шлюза (`my.ai.gateway.mcp`), инструменты которых доступны ключу `online` (AI-GW-14). Ключ `offline` инструментов не получает.";
+                  };
                 };
               }
             );
@@ -165,6 +188,44 @@ _: {
               Состав матрицы ключей доступа (AI-GW-4): на каждого агента — два ключа,
               `<агент>-online` и `<агент>-offline`. Права запрещены по умолчанию;
               значения задаёт хост.
+            '';
+          };
+
+          mcp = lib.mkOption {
+            type = lib.types.attrsOf (
+              lib.types.submodule {
+                options = {
+                  type = lib.mkOption {
+                    type = lib.types.enum [
+                      "stdio"
+                      "http"
+                    ];
+                    description = "`stdio` — шлюз запускает команду под своей учётной записью; `http` — удалённый сервер.";
+                  };
+                  command =
+                    opt (lib.types.nullOr lib.types.str) null
+                      "stdio: путь к исполняемому файлу (из пакета, без загрузок из сети, AI-CTX-5).";
+                  args = opt (lib.types.listOf lib.types.str) [ ] "stdio: аргументы команды.";
+                  env = opt (lib.types.attrsOf lib.types.str) { } "stdio: несекретные переменные окружения сервера.";
+                  url = opt (lib.types.nullOr lib.types.str) null "http: адрес сервера.";
+                  headers = opt (lib.types.attrsOf lib.types.str) { } "http: несекретные заголовки запроса.";
+                  secret =
+                    opt lib.types.bool false
+                      "Серверу нужен секрет `ai.gateway.mcpToken.<id>` (SEC-3). Нет значения — сервер вычёркивается, юнит не падает (AI-GW-9).";
+                  secretEnv =
+                    opt (lib.types.nullOr lib.types.str) null
+                      "stdio: имя переменной окружения, в которую обёртка кладёт секрет.";
+                  secretHeader = opt lib.types.str "Authorization" "http: заголовок, несущий секрет.";
+                  secretPrefix = opt lib.types.str "Bearer " "http: префикс значения заголовка с секретом.";
+                };
+              }
+            );
+            default = { };
+            description = ''
+              MCP-шлюз (AI-GW-14): нейтральный id → сервер, которому нужен секрет или который
+              удалённый. Серверы без секретов запускает сам агент в песочнице (список в dotfiles,
+              AI-CTX-3/4). Секрет называется по id (`ai.gateway.mcpToken.<id>`). Заполняет хост
+              и фичи-реализации (web-search, mcp-jira).
             '';
           };
         };

@@ -15,7 +15,9 @@
 # Секреты в sops пользователя: `ai.gateway.providerKey.<id>` — по нейтральному id
 # провайдера (SEC-3). Ключи доступа и учётные данные management-API в sops не хранятся.
 # AI-GW-10 (запуск по требованию) не реализован — см. _llm-gateway-service.nix.
-# MCP-шлюз (AI-GW-14) — R9.20: до него у всех ключей инструменты запрещены.
+# MCP-шлюз (AI-GW-14, R9.23): серверы с секретом и удалённые — `my.ai.gateway.mcp` (политика
+# хоста), права ключей — `my.ai.gateway.agents.<агент>.mcp` (только `online`); определения —
+# _llm-gateway-mcp.nix. Секрет сервера — `ai.gateway.mcpToken.<id>` в sops пользователя.
 # Зависимости: ai-facts (my.ai.*), host-facts (my.host.users), users
 # (my.users.*.capabilities), tunnel-facts (my.tunnel.*) — только чтение my.*, не импорт (ARCH-3).
 { config, lib, ... }:
@@ -23,6 +25,7 @@ let
   outer = config;
   secretsFile = outer.flake.lib.repo.secrets;
   buildConfig = import ./_llm-gateway-config.nix { inherit lib; };
+  mcpNeutralId = lib.match "[a-z][a-z0-9-]*"; # имя клиента MCP не начинается с цифры (Bifrost)
 
   knownTypes = [
     "openai"
@@ -51,6 +54,10 @@ in
       gw = config.my.ai.gateway;
       mlUsers = lib.filter (u: lib.elem "ml" outer.my.users.${u}.capabilities) config.my.host.users;
       pkg = pkgs.callPackage ./_llm-gateway-package.nix { };
+      mcpBuild = import ./_llm-gateway-mcp.nix { inherit lib pkgs; } {
+        policy = gw.mcp;
+        inherit (gw) agents;
+      };
       keyIds = lib.concatMap (a: map (m: "${a}-${m}") modes) (lib.attrNames gw.agents);
       providerIds = lib.attrNames gw.providers;
       allNative = lib.concatMap (p: p.nativeModels) (lib.attrValues gw.providers);
@@ -84,6 +91,7 @@ in
           ;
         inherit (config.my.ai) inference;
         localRoles = config.my.ai.local;
+        mcp = mcpBuild;
         proxyUrl = if proxyUrl == "" then null else proxyUrl;
         pricingUrl = "file://${pricingFile}";
       };
@@ -102,6 +110,8 @@ in
           group = config.users.users.${user}.group;
           port = gw.portBase + (config.users.users.${user}.uid - 1000);
           credPath = id: config.sops.secrets."ai.gateway.providerKey.${id}.${user}".path;
+          mcpSecrets = mcpBuild.secrets;
+          mcpCredPath = id: config.sops.secrets."ai.gateway.mcpToken.${id}.${user}".path;
         };
     in
     {
@@ -134,6 +144,21 @@ in
           message = "my.ai.gateway.providers.*.nativeModels не должны совпадать с именами ролей (сквозной маршрут и роли различаются по имени модели).";
         }
         {
+          assertion = lib.all (id: mcpNeutralId id != null) (lib.attrNames gw.mcp);
+          message = "my.ai.gateway.mcp: id сервера — [a-z][a-z0-9-]*, без имён вендоров (SEC-3).";
+        }
+        {
+          assertion = lib.all (
+            s:
+            if s.type == "stdio" then s.command != null && (!s.secret || s.secretEnv != null) else s.url != null
+          ) (lib.attrValues gw.mcp);
+          message = "my.ai.gateway.mcp: у stdio-сервера нужен command (и secretEnv при secret), у http — url.";
+        }
+        {
+          assertion = lib.all (a: lib.all (id: gw.mcp ? ${id}) a.mcp) (lib.attrValues gw.agents);
+          message = "my.ai.gateway.agents.*.mcp должен перечислять id из my.ai.gateway.mcp.";
+        }
+        {
           # Цена нужна там, где по ней считается лимит; без лимита — только журнал стоимости.
           assertion = gw.budget.maxUSD == null || unpriced == [ ];
           message =
@@ -155,6 +180,19 @@ in
               restartUnits = [ "${unitOf user}.service" ];
             }
           ) providerIds
+        ) mlUsers
+        ++ lib.concatMap (
+          user:
+          map (
+            s:
+            lib.nameValuePair "ai.gateway.mcpToken.${s.id}.${user}" {
+              key = "ai.gateway.mcpToken.${s.id}";
+              sopsFile = secretsFile "users/${user}.yaml";
+              owner = "root";
+              mode = "0400";
+              restartUnits = [ "${unitOf user}.service" ];
+            }
+          ) mcpBuild.secrets
         ) mlUsers
       );
 

@@ -154,6 +154,31 @@ in
         ];
         nativeProvider = "primary";
       };
+      # Агент по подписке (AI-GW-11): ключ шлюза нужен только для инструментов MCP-шлюза
+      # (AI-GW-14); модель шлюз ему не отдаёт — ролей нет. dsh инструменты не получает: формат
+      # подключения MCP у DeepSeek Harness не проверен (AI-A16, ПРОВЕРИТЬ).
+      claude.mcp = [
+        "github"
+        "jira"
+        "web-search"
+      ];
+    };
+
+    # MCP-шлюз (AI-GW-14, R9.23): серверы с секретом и удалённые. Токены — в секретах
+    # пользователя (`ai.gateway.mcpToken.<id>`), выдавать минимальные права. `jira` и
+    # `web-search` определяют фичи mcp-jira и web-search-searxng (пакет и обёртка), здесь —
+    # адрес трекера и состав доступа.
+    my.ai.gateway.mcp = {
+      github = {
+        type = "http";
+        url = "https://api.githubcopilot.com/mcp/";
+        # Только чтение: заголовок режима сервера + токен с правами «только чтение»
+        # (ПРОВЕРИТЬ: заголовок `X-MCP-Readonly` по документации удалённого сервера).
+        headers.X-MCP-Readonly = "true";
+        secret = true;
+      };
+      # ПРОВЕРИТЬ: адрес внутреннего трекера (раньше — JIRA_URL в ~/.claude.json); заменить до сборки.
+      jira.env.JIRA_URL = "https://jira.example.invalid";
     };
 
     my.tunnel = {

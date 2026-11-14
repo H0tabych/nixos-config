@@ -56,6 +56,7 @@ _: {
       home.packages = [
         lspServer
         pkgs.ast-grep # L3
+        pkgs.playwright-mcp # браузер для агентов: stdio в песочнице, браузеры в пакете, без загрузок (AI-CTX-4/5)
       ];
     };
 }
