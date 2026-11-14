@@ -9,7 +9,8 @@
 #   - новые вложенные репозитории (`.git` где угодно ниже корня);
 #   - появление `hooks/`, `info/`, `config.worktree` там, где их не было
 #     (`--ro-bind-try` в песочнице не создаёт заглушек);
-#   - изменённые игнорируемые файлы (`.gitignore` скрывает их от `git status`).
+#   - изменённые игнорируемые файлы (`.gitignore` скрывает их от `git status`),
+#     кроме кэша direnv `.direnv/`.
 # Это отчёт, а не граница: он сообщает, не откатывает. Слияние и публикация —
 # только человек.
 #
@@ -117,6 +118,9 @@ pkgs.writeShellApplication {
     # Потолок на число игнорируемых файлов (node_modules и подобное): сверх него
     # отчёт честно говорит, что не смотрел.
     limit=20000
+    # Кэш окружения direnv (`.direnv/` в любом каталоге) — не содержимое проекта: его штатно
+    # пересобирает direnv при входе агента (с ADR-48 у claude нет своего `.direnv`), в отчёт не идёт.
+    cache_re='(^|/)\.direnv/'
 
     # Снимок — набор секций `== имя`, строки каждой отсортированы: сравнение
     # через diff по секциям.
@@ -141,9 +145,10 @@ pkgs.writeShellApplication {
       done | sort -u
       echo "== ignored"
       git -C "$root" ls-files -z -o -i --exclude-standard 2>/dev/null \
+        | grep -z -v -E "$cache_re" \
         | head -z -n "$limit" \
         | (cd "$root" && xargs -0 -r stat -c '%n %s %Y' 2>/dev/null) | sort || true
-      if [ "$(git -C "$root" ls-files -o -i --exclude-standard 2>/dev/null | head -n "$((limit + 1))" | wc -l)" -gt "$limit" ]; then
+      if [ "$(git -C "$root" ls-files -o -i --exclude-standard 2>/dev/null | grep -v -E "$cache_re" | head -n "$((limit + 1))" | wc -l)" -gt "$limit" ]; then
         echo "== ignored-truncated"
       fi
     }

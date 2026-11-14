@@ -473,7 +473,10 @@ pkgs.testers.runNixOSTest {
         "&& echo changed > ignored.log "
         "&& touch .git/config.worktree"
     ))
+    # Кэш direnv (как пересборка `.direnv` в долгоживущей песочнице, ADR-48) — не отклонение.
+    machine.succeed(outside(f"mkdir -p {REPO}/.direnv && touch {REPO}/.direnv/flake-profile-x"))
     rep = machine.succeed(outside(f"agents-git report {REPO} /home/agent/snap 2>&1"))
+    assert ".direnv" not in rep, f"кэш direnv не попадает в отчёт: {rep!r}"
     for want in [
         "refs/heads/side",
         "refs/heads/fresh",
