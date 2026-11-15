@@ -29,6 +29,9 @@
     # читает `~/.agents`, но домашний каталог в песочнице скрыт, а `~/.config/ai` (ссылка на
     # dotfiles/ai) виден на чтение — указываем его переменной окружения `DSH_AGENTS_HOME`.
     extra_env=(--env "DSH_HOME=$state_dir/dsh-home" --env "DSH_AGENTS_HOME=$HOME/.config/ai")
+    # Журналы локальных MCP-серверов (code-context-lsp) — в файл, а не в терминал: клиент dsh
+    # отдаёт им свой stderr, и шум заглушает ссылку веб-интерфейса.
+    extra_env+=(--env "CODE_CONTEXT_LSP_LOG=$state_dir/mcp-lsp.log")
     if [ "$agent_mode" = controlled ]; then
       extra_env+=(--env "DSH_PERMISSION_MODE=workspace-write")
     else

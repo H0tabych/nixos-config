@@ -28,6 +28,10 @@ _: {
             exit 1
           }
           [ "$#" -eq 1 ] || usage
+          # Клиент dsh запускает сервер со stderr терминала: журналы mcp-language-server и LSP
+          # заглушают вывод лаунчера (ссылку веб-интерфейса). Адаптер dsh задаёт файл журнала;
+          # у Claude переменной нет — его stderr собирает сам Claude и показывает в /mcp.
+          [ -z "''${CODE_CONTEXT_LSP_LOG:-}" ] || exec 2>> "$CODE_CONTEXT_LSP_LOG"
 
           case "$1" in
             python) lsp=(pyright-langserver --stdio) ;;

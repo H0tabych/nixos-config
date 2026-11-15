@@ -546,6 +546,10 @@ AI-A4 (игра) и проверка CUDA без GSP (A7).
   шлюза, адрес и ключ из `AI_MCP_URL`/`AI_MCP_KEY`) подключает лаунчер флагами `--patch`; права на
   инструменты — у ключа `dsh-online` (`my.ai.gateway.agents.dsh.mcp`). Инструменты видны как
   `mcp__<сервер>__<инструмент>`.
+- **Журналы локальных MCP-серверов `dsh`** (`code-context-lsp`) — файл
+  `~/.local/state/agents/dsh/mcp-lsp.log`, а не терминал (клиент `dsh` отдаёт им свой stderr, шум
+  заглушал ссылку веб-интерфейса). Сообщения «rust-analyzer не найден» вне проекта на Rust
+  ожидаемы: `lsp-rust` берёт его из окружения проекта (AI-CTX-1).
 - **Токен Jira** — файл `~/Documents/job/ControlSystems/projects/token_jira.txt` (не sops, решение
   владельца): `my.ai.gateway.mcp.jira.secretHomeFile`. Перед стартом шлюза root копирует его в
   состояние службы; нет файла — сервер вычёркивается (в журнале «нет секрета сервера MCP»), шлюз

@@ -217,6 +217,7 @@ pkgs.testers.runNixOSTest {
     echo "dsmode=$(printenv DSH_PERMISSION_MODE)"
     echo "mcpkey=$(printenv AI_MCP_KEY)"
     echo "mcpurl=$(printenv AI_MCP_URL)"
+    echo "lsplog=$(printenv CODE_CONTEXT_LSP_LOG)"
     """
 
 
@@ -323,6 +324,7 @@ pkgs.testers.runNixOSTest {
     assert r["vpnname"] != "" and r["inet"] != "" and r["dskey"] == "", f"claude в online: сеть хоста, ключа модели шлюза нет: {out}"
     # R9.23 (AI-GW-14): ключ шлюза у claude — только для инструментов, значением в окружении (AI_MCP_KEY).
     assert r["mcpkey"] == "claude-online-key" and r["mcpurl"] == "http://127.0.0.1:11501/mcp", f"MCP-ключ claude: {out}"
+    assert r["lsplog"] == "", f"у claude stderr серверов собирает сам агент: {out}"
 
     # === Режимы агента (AI-AGT-1, AI-AGT-9): autonomous по умолчанию, `--controlled` ====
     # claude: в autonomous флага режима нет (настройки пользователя), в controlled — manual.
@@ -445,6 +447,7 @@ pkgs.testers.runNixOSTest {
     assert "--patch\n${dshPolicy}\n" in args, f"политика Nix — флагом --patch из хранилища: {args}"
     assert "dsh-online-key" not in args, f"ключ не в argv: {args}"
     assert r["mcpkey"] == "dsh-online-key" and r["mcpurl"] == "http://127.0.0.1:11501/mcp", f"вход MCP-шлюза: {out}"
+    assert r["lsplog"] == f"{HOME}/.local/state/agents/dsh/mcp-lsp.log", f"журнал MCP-серверов dsh в файл: {out}"
     assert f"--patch\n{MCPD}/local.cordis.yml\n" in args and f"--patch\n{MCPD}/gateway.cordis.yml\n" in args, args
     machine.fail(f"test -e {DSH_PROFILES}")  # профили лаунчер не пишет (D18)
     out, r = probe_in("dsh --offline", f"{HOME}/other/free")
