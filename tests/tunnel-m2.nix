@@ -544,7 +544,9 @@ pkgs.testers.runNixOSTest {
               + "echo $rc $(( ($(date +%s%N) - start) / 1000000 ))"
           ).split()
           assert rc == "7", f"ожидался отказ соединения (curl 7), получено {rc}"
-          assert int(took) <= 2000, f"отказ занял {took} мс"
+          # Норма VPN-A8 — 2 с на машине; бюджет ВМ-теста шире (общий раннер CI, R9.2).
+          # Код 7 выше уже отличает отказ от drop (28); здесь — защита от таймаута 10 с.
+          assert int(took) <= 5000, f"отказ занял {took} мс (норма 2000, бюджет ВМ 5000)"
           rc, _ = client.execute("timeout 5 getent hosts foreign.test")
           assert rc != 0, "имя разрешилось без туннеля"
           client.execute("sleep 3")

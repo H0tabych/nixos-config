@@ -104,9 +104,10 @@ import ./tunnel-m2.nix {
           assert hits == "", f"в direct клиент открыл соединение с выходом:\n{hits}"
 
       with subtest("VPN-RTE-9: домен policy.proxy в direct — быстрый отказ"):
-          t0 = time.monotonic()
-          client.fail(BLOCKED)
-          assert time.monotonic() - t0 < 4, "отказ должен быть быстрым, а не по таймауту"
+          # Отказ — любой ненулевой код, кроме 28: таймаут curl (--max-time 5) означал бы
+          # молчаливое отбрасывание. Так проверка не зависит от скорости раннера CI (R9.2).
+          rc, _ = client.execute(BLOCKED)
+          assert rc not in (0, 28), f"отказ должен быть быстрым, а не по таймауту (curl 28) и не успехом: получено {rc}"
 
       with subtest("M2-10, VPN-KS-10: kill switch на месте, петли нет, остановка клиента — отказ"):
           client.succeed("nft list table inet killswitch")

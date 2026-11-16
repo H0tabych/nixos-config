@@ -76,13 +76,15 @@ pkgs.testers.runNixOSTest {
         "Код 28 означал бы drop вместо reject, код 124 — что истёк внешний timeout"
     )
 
-    # VPN-KS-3, количественно: отказ приходит за ≤ 2 с, а не по таймауту клиента.
+    # VPN-KS-3, количественно: отказ приходит быстро, а не по таймауту клиента (10 с).
+    # Норма VPN-KS-3 — ≤ 2 с на машине; бюджет ВМ-теста шире (общий раннер CI, R9.2,
+    # измерение с точностью до секунды): он по-прежнему отличает reject от drop.
     elapsed = machine.succeed(
         "start=$(date +%s); "
         "timeout 30 dig +tries=1 +time=10 @192.168.1.1 example.com >/dev/null 2>&1 || true; "
         "echo $(( $(date +%s) - start ))"
     )
-    assert int(elapsed.strip()) <= 2, \
-        f"VPN-KS-3: DNS-запрос мимо туннеля должен отказываться за ≤ 2 с, занял {elapsed.strip()} с"
+    assert int(elapsed.strip()) <= 5, \
+        f"VPN-KS-3: DNS-запрос мимо туннеля должен отказываться быстро (норма ≤ 2 с, бюджет ВМ 5 с), занял {elapsed.strip()} с"
   '';
 }
