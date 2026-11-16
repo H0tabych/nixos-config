@@ -15,6 +15,18 @@ check:
     nix flake check
     bash scripts/check-lock.sh
 
+# OPS-2, A2: каждый хост вычисляется до пути derivation, без сборки (тяжёлые
+# unfree-пакеты в CI не собираются). Полная сборка — только у хоста класса vm
+# (build-vm.yml); остальные хосты собираются на машине (OPS-3).
+eval-hosts:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    hosts=$(nix eval --json .#nixosConfigurations --apply builtins.attrNames | tr -d '[]"' | tr ',' ' ')
+    for h in $hosts; do
+        echo "eval $h"
+        nix eval --raw ".#nixosConfigurations.$h.config.system.build.toplevel.drvPath" >/dev/null
+    done
+
 # TODO(R2.9/18.9): разметка диска и установка ещё не специфицированы пошагово (Этап 2)
 bootstrap host:
     @echo "bootstrap {{ host }}: см. docs/architecture/ARCHITECTURE.md §18.9 и ROADMAP R2.9 — ещё не реализовано"
@@ -43,22 +55,21 @@ dotfiles-clone:
         "$(nix eval --impure --raw --expr 'let l = builtins.fromJSON (builtins.readFile ./flake.lock); o = l.nodes.dotfiles.original; in "https://github.com/${o.owner}/${o.repo}.git"')" \
         "$(nix eval --raw .#dotfilesClonePaths.$(whoami))"
 
-# TODO(R9.2): scripts/new-feature.sh ещё не создан. До тех пор шаблоны
-# копируются вручную: modules/_templates/feature.nix, modules/_templates/preset.nix,
-# modules/hosts/_template.nix, modules/users/_template.nix (чек-листы 18.1, 18.3, 18.4).
+# Заготовка фичи из modules/_templates/feature.nix (чек-лист 18.1). Пресет и
+# каталог слотов правит человек: до подключения в пресет C10 (FEAT-8) красный.
+new-feature domain name *audience="":
+    bash scripts/new-feature.sh {{ domain }} {{ name }} {{ audience }}
+
+# add-host и add-user (правки .sops.yaml, ключи, my.host.users) не реализованы:
+# шаблоны копируются вручную по чек-листам 18.3 и 18.4.
 add-host name:
-    @echo "add-host {{ name }}: scripts/new-feature.sh не реализован (ROADMAP R9.2)."
+    @echo "add-host {{ name }}: не реализован."
     @echo "Скопируйте modules/hosts/_template.nix → modules/hosts/{{ name }}.nix по чек-листу 18.3."
     @exit 1
 
 add-user name:
-    @echo "add-user {{ name }}: scripts/new-feature.sh не реализован (ROADMAP R9.2)."
+    @echo "add-user {{ name }}: не реализован."
     @echo "Скопируйте modules/users/_template.nix → modules/users/{{ name }}.nix по чек-листу 18.4."
-    @exit 1
-
-new-feature domain name:
-    @echo "new-feature {{ domain }} {{ name }}: scripts/new-feature.sh не реализован (ROADMAP R9.2)."
-    @echo "Скопируйте modules/_templates/feature.nix → modules/{{ domain }}/{{ name }}.nix по чек-листу 18.1."
     @exit 1
 
 # Смещение swap-файла для my.host.resume.offset (STO-5). Значение печатается,

@@ -4,14 +4,29 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      # ПРОВЕРИТЬ: свериться с github.com/DeterminateSystems/nix-installer-action/releases
-      - uses: DeterminateSystems/nix-installer-action@v21
+      - uses: DeterminateSystems/nix-installer-action@v23
 
+      # ВМ-тесты в tests/* (nix flake check) требуют /dev/kvm; на раннере он есть,
+      # но недоступен пользователю сборки без этого правила.
+      - name: enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Формат (--ci), flake check (структура C1–C13, FEAT-8, DOT-14, tests/*), A16.
       - name: just check
         run: nix develop --command just check
+
+      # OPS-2, A2: остальные хосты вычисляются, не собираются.
+      - name: eval hosts
+        run: nix develop --command just eval-hosts

@@ -63,9 +63,11 @@ Dotfiles — отдельный репозиторий, подключён ка�
 - Применение на машине — только по OPS-3: `just build <host>` → `nvd diff` →
   `just test <host>` → `just boot <host>`. Это делает пользователь, не ассистент
   (правило 2 выше).
-- `just add-host`/`add-user`/`new-feature` и `just bootstrap`/`dotfiles-clone` —
-  заготовки-стабы (`scripts/new-feature.sh` ещё не создан); не предлагать их как
-  готовые команды до соответствующего шага ROADMAP.
+- `just new-feature <домен> <имя>` создаёт файл фичи из шаблона (`scripts/new-feature.sh`; пресет
+  и каталог слотов правит человек). `just add-host`/`add-user` и `just bootstrap` — заготовки-стабы;
+  не предлагать их как готовые команды до соответствующего шага ROADMAP.
+- CI (`.github/workflows/`): `check.yml` (`just check` + `just eval-hosts`), `build-vm.yml`,
+  `secrets.yml`, `update-lock.yml` (PR с обновлением `flake.lock`, принимает человек по OPS-3).
 - Коммиты маленькие, по шагу; сообщение начинается с ID шага: `R1.2: каркас core/`.
 - Ответы на русском, коротко; код и идентификаторы — как в документах.
 - Нужен новый файл — назови путь по STRUCTURE.md, класс (`nixos` / `homeManager`), пресет-владелец и список затрагиваемых файлов.
@@ -84,4 +86,4 @@ Dotfiles — отдельный репозиторий, подключён ка�
 
 - Трек: `C — чистая установка`
 - Этап: 9 (завершение и приёмка). Последний пройденный Gate: G8 (ML и агенты; 2026-11-06, гейт 7.3 и режим M2 на машине пройдены); G7 (офис/медиа/игры; закрыт по факту); G6 закрыт 2026-10-15 (ADR-35)
-- Репозиторий: `github.com/H0tabych/nixos-config` (приватный), orphan-ветка `main`; dotfiles — `github.com/H0tabych/.dotfiles` (приватный). Старая история отведена в локальную ветку `old-main`, не отправлять
+- Репозиторий: `github.com/H0tabych/nixos-config` (публичный), orphan-ветка `main`; dotfiles — `github.com/H0tabych/.dotfiles` (публичный). Старая история отведена в локальную ветку `old-main`, не отправлять

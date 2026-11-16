@@ -1,0 +1,30 @@
+name: update-lock
+
+# Раз в неделю открывает PR с обновлённым flake.lock. PR, созданный через
+# GITHUB_TOKEN, не запускает check/build-vm/secrets: запустите их вручную
+# (закрыть и открыть PR) или проверьте локально. Принимает человек по OPS-3:
+# build → nvd diff → test → boot.
+# Требует: Settings → Actions → General → «Allow GitHub Actions to create and
+# approve pull requests».
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: DeterminateSystems/nix-installer-action@v23
+
+      - uses: DeterminateSystems/update-flake-lock@v29
+        with:
+          pr-title: "chore(lock): обновление flake.lock"
+          pr-labels: dependencies

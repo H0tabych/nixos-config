@@ -328,7 +328,9 @@ tests/
 | `vm <хост>` | Виртуальная машина хоста (OPS-9) |
 | `update [input]` | Обновление lock-файла и `nvd diff` |
 | `dotfiles-clone` | Клонировать dotfiles в путь из `dotfiles.source`, если его там ещё нет (DOT-4) |
-| `add-host <имя>`, `add-user <имя>`, `new-feature <домен> <имя>` | Создание из шаблонов вместе с правками `.sops.yaml` и пресета |
+| `new-feature <домен> <имя>` | Файл фичи из `modules/_templates/feature.nix` (`scripts/new-feature.sh`); пресет и каталог слотов правит человек, до этого C10 красный |
+| `add-host <имя>`, `add-user <имя>` | Создание из шаблонов вместе с правками `.sops.yaml` и пресета — **не реализовано** (стабы), шаблоны копируются вручную по чек-листам 18.3 и 18.4 |
+| `eval-hosts` | Вычисление `toplevel.drvPath` каждого хоста без сборки (OPS-2, A2); вызывает `check.yml` |
 | `hibernate-offset` | Вычисление `my.host.resume.offset` (STO-5) |
 | `hooks` | Включить pre-commit хук сканера секретов в этом клоне: `git config core.hooksPath scripts/git-hooks` (SEC-9; оболочка разработки хук не ставит — AI-SBX-7) |
 | `sops-edit <файл>`, `sops-rekey` | Работа с секретами |

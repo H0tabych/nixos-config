@@ -4,14 +4,17 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build-vm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      # ПРОВЕРИТЬ: свериться с github.com/DeterminateSystems/nix-installer-action/releases
-      - uses: DeterminateSystems/nix-installer-action@v21
+      - uses: DeterminateSystems/nix-installer-action@v23
 
+      # HOST-4, A2: хост класса vm собирается полностью из чистого клона.
       - name: build ci-vm
         run: nix build .#nixosConfigurations.ci-vm.config.system.build.vm --print-build-logs
