@@ -25,15 +25,15 @@
       "locked": {
         "lastModified": 1794689641,
         "narHash": "sha256-7A5ADq+z1ya584n5EqWiQk3GJuVVHXgzsJU02NMw73Q=",
-        "ref": "refs/heads/main",
+        "owner": "H0tabych",
+        "repo": ".dotfiles",
         "rev": "9d406a89809ce42771a680391dbc0c881d3c8bb4",
-        "revCount": 65,
-        "type": "git",
-        "url": "ssh://git@github.com/H0tabych/.dotfiles.git"
+        "type": "github"
       },
       "original": {
-        "type": "git",
-        "url": "ssh://git@github.com/H0tabych/.dotfiles.git"
+        "owner": "H0tabych",
+        "repo": ".dotfiles",
+        "type": "github"
       }
     },
     "flake-parts": {
