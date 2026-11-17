@@ -35,7 +35,7 @@ pkgs.writeShellApplication {
   ];
   text = ''
     usage() {
-      echo "usage: agents-sandbox-exec <project-dir|-> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--cwd PATH] [--home-rw] [--info-file PATH] -- <cmd...>" >&2
+      echo "usage: agents-sandbox-exec <project-dir|-> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--cwd PATH] [--home-rw] [--device kvm|dri]... [--info-file PATH] -- <cmd...>" >&2
       echo "       agents-sandbox-exec <project-dir|-> <state-dir> <online|offline> [--env ...] [--pass-env ...] --print-env" >&2
       exit 1
     }
@@ -59,12 +59,11 @@ pkgs.writeShellApplication {
     # теряются ключи SSH/GPG, ключ расшифровки, репозиторий конфигурации и прочее в $HOME.
     extra_env=()
     pass_env=()
+    devices=()
     config_dirs=()
     app_paths=()
     cwd_arg=""
-    home_rw=0
-    info_file=""
-    print_env=0
+    home_rw=0 info_file="" print_env=0
     while :; do
       case "''${1:-}" in
         --env)
@@ -93,6 +92,10 @@ pkgs.writeShellApplication {
         --home-rw)
           home_rw=1
           shift
+          ;;
+        --device)
+          case "$2" in kvm | dri) devices+=("$2") ;; *) usage ;; esac
+          shift 2
           ;;
         --info-file)
           info_file="$2"
@@ -231,15 +234,10 @@ pkgs.writeShellApplication {
       bwrap_args+=(--ro-bind-try /run/systemd/resolve/stub-resolv.conf /run/systemd/resolve/stub-resolv.conf)
     fi
     for f in /bin/sh /usr/bin/env; do
-      if [ -e "$f" ]; then
-        bwrap_args+=(--symlink "$(readlink -f "$f")" "$f")
-      fi
+      [ ! -e "$f" ] || bwrap_args+=(--symlink "$(readlink -f "$f")" "$f")
     done
     # AI-SBX-13: сведения о песочнице для входа (pid процесса внутри, id пространств).
-    if [ -n "$info_file" ]; then
-      exec 4> "$info_file"
-      bwrap_args+=(--info-fd 4)
-    fi
+    [ -z "$info_file" ] || { exec 4> "$info_file"; bwrap_args+=(--info-fd 4); }
 
     ${mounts}
 

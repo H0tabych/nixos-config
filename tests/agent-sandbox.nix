@@ -318,6 +318,18 @@ pkgs.testers.runNixOSTest {
     )
     assert status != 0 and "fake-ssh-key" not in out, "--app-path не открывает ничего, кроме переданного пути"
 
+    # === AI-SBX-14: --device — узлы устройств хоста только по явной опции ==========
+    # Реальных /dev/kvm и /dev/dri в тестовой ВМ может не быть: подставляем метку.
+    machine.succeed("mkdir -p /dev/dri && touch /dev/dri/sbx-marker")
+    status, _ = machine.execute(sandbox("test -e /dev/dri/sbx-marker"))
+    assert status != 0, "AI-SBX-14: без --device узлов хоста в /dev песочницы нет"
+    sandbox_out("test -e /dev/dri/sbx-marker", "--device dri")
+    status, _ = machine.execute(sandbox("test -e /dev/dri/sbx-marker", "--device kvm"))
+    assert status != 0, "AI-SBX-14: --device kvm не открывает dri"
+    sandbox_out("true", "--device kvm")  # узла kvm на хосте может не быть: молча пропускается
+    status, _ = machine.execute(sandbox("true", "--device sda"))
+    assert status != 0, "AI-SBX-14: устройство вне белого списка — отказ"
+
     # === AI-SBX-12: --home-rw (роль claude). Урезанный набор AI-A7 ============
     HRW = "--home-rw"
     assert "fake-ssh-key" in sandbox_out("cat /home/agent/.ssh/id_ed25519", HRW), (

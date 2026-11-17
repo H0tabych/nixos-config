@@ -21,7 +21,14 @@
   gatewayKey = true;
 
   longLived = {
-    sandboxOpts = [ "--home-rw" ];
+    # `--device`: /dev/kvm и /dev/dri хоста (AI-SBX-14) — проверки переносимости в ВМ и живой Wayland.
+    sandboxOpts = [
+      "--home-rw"
+      "--device"
+      "kvm"
+      "--device"
+      "dri"
+    ];
     # Реестр живых процессов Claude (`~/.claude/sessions/<pid>.json` и ключи
     # `<pid>.<хэш>.key`) помечает каждую запись доменом PID: машина + inode пространства PID.
     # Запись чужого домена Claude не может проверить и считает живой навсегда (2.1.323:

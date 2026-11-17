@@ -1,6 +1,6 @@
 # Приватная часть: agents-tools · Владелец: modules/ai/agents-tools.nix (STR-6)
 # Фрагмент скрипта agents-sandbox-exec: монтирования $HOME, проекта,
-# каталога состояния, кэша окружения, защиты git (AI-SBX-2, AI-SBX-7, AI-SBX-12).
+# каталога состояния, кэша окружения, защиты git, узлов устройств (AI-SBX-2, 7, 12, 14).
 # Вставляется в тот же скрипт: переменные (`bwrap_args`, `real_home`, `state_dir`,
 # `home_rw`, `no_project`, `config_dirs`, `app_paths` …) — общие с ним.
 # Без проекта (`no_project`, долгоживущая песочница AI-SBX-13) — только домашний каталог,
@@ -8,6 +8,12 @@
 # Порядок привязок значим (позднее перекрывает раннее): проект, состояние, `.direnv`
 # роли, база direnv, затем защита git.
 ''
+  # AI-SBX-14: узлы устройств хоста из белого списка — после `--dev /dev` (иначе он их затрёт);
+  # узла на хосте нет — пропуск.
+  for d in ''${devices[@]+"''${devices[@]}"}; do
+    bwrap_args+=(--dev-bind-try "/dev/$d" "/dev/$d")
+  done
+
   # База разрешений direnv (AI-SBX-4): ищется в $XDG_DATA_HOME/direnv — кладём ro.
   direnv_data="''${XDG_DATA_HOME:-$real_home/.local/share}/direnv"
 
