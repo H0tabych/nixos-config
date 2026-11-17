@@ -16,6 +16,8 @@ VPN_SUBSYSTEM.md P.6/P.7).
 - [`runbook/design-system.md`](runbook/design-system.md) — дизайн-система Glass
   Tide: журнал замеров (DSN-A9, DSN-A10, DSN-A13), ручное переключение профилей
   эффектов
+- [`runbook/portability.md`](runbook/portability.md) — переносимость dotfiles на не-Nix системы:
+  процедура и журнал проверки A15 (R9.5), исключения
 - [`runbook/ai.md`](runbook/ai.md) — ML и агенты: см. раздел ниже
 
 ## ML и агенты (AI-OPS-5)
