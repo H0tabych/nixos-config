@@ -30,7 +30,7 @@ dotfiles смонтированы только на чтение, настоящ
 реального дисплея (см. «Исключения»).
 
 `install.sh` дважды подряд — без ошибок; `--check-deps` — без побочных эффектов. `checks/portability.sh --live`:
-**PASS 25, FAIL 0, SKIP 4** (eww дважды: в статических проверках и в live).
+**PASS 27, FAIL 0, SKIP 2** (после установки eww и oh-my-zsh из AUR; до этого было 25/0/4).
 
 | Приложение | Версия (Arch) | Проверка | Итог |
 |---|---|---|---|
@@ -41,6 +41,7 @@ dotfiles смонтированы только на чтение, настоящ
 | hypr | Hyprland 0.57.2 (≥ 0.55, Lua) | `Hyprland --verify-config` на `hyprland.lua` → `config ok` | PASS (живой старт — SKIP) |
 | rofi | 2.1.1 | `rofi -dump-config` | PASS |
 | mako | 1.11.0 | живой старт на headless-sway | PASS |
+| eww | AUR `eww-git` 0.6.0 r91 (g48f5aa8) | демон + окна `bar` и `calendar-popup` открываются на headless-sway | PASS |
 | swayosd | 0.3.2 | живой старт (CSS принят) | PASS |
 | yazi | 26.9.1 (в реестре 26.5.6) | `--version`, старт в pty без ошибок темы | PASS |
 | mpv | 0.42.0 | `--list-options` с конфигом | PASS |
@@ -60,14 +61,16 @@ dotfiles смонтированы только на чтение, настоящ
 
 ### Исключения (записаны для R9.9)
 
-- **eww** — пакета нет в официальных репозиториях Arch (AUR/сборка из исходников); сборка не выполнялась
-  (стороннее ПО из сети без согласия владельца). Проверены только его сценарии (`bash -n`).
-  **Не проверено**: старт `eww`, виджеты панели и окна сети.
+- **eww** — в официальных репозиториях Arch нет; собран из AUR по разрешению владельца (`makepkg`,
+  `--skippgpcheck`: источник закреплён хэшем коммита). **Находка:** AUR-пакет `eww` 0.6.0 (коммит d87c2fd,
+  `eww --version` → 0.5.0) не разбирает `:focusable "none"` из `eww.yuck` (`Failed to turn none into a value of
+  type bool`) — конфиг требует eww из master (как nixpkgs 0.6.0-unstable-2026-07-05); нужен `eww-git`, с ним
+  окна открываются. Не проверено: содержимое окон (источники данных — Hyprland IPC, nmcli и др. — на sway
+  и без сети/батареи не работают), окно сети и меню.
 - **Hyprland вживую и hyprpaper** — в окружении нет GPU/DRM (`CBackend::create() failed`); hyprpaper требует
   протоколов Hyprland, которых нет у запасного носителя (headless-sway, на нём проверены мako, swayosd, foot).
   Конфиг Hyprland проверен `--verify-config`. Нужна ВМ с виртуальным GPU или реальная сессия.
-- **oh-my-zsh** — в официальных репозиториях Arch нет; `.zshrc` стартует без него без ошибок (запасные пути,
-  деградация без плагинов), версионная заметка реестра это допускает.
+- **oh-my-zsh** — в AUR (`oh-my-zsh-git`, собран и установлен; `.zshrc` стартует без ошибок и в pty).
 - Приложения без безголовой проверки (визуальный вид — mpv OSD, zathura, btop, MangoHud-оверлей; Telegram-тема)
   проверены только на запуск с конфигом.
 - Версии новее заметок реестра (yazi 26.9.1 против 26.5.6, starship 1.27 против 1.25) — конфиги принимаются;
@@ -81,3 +84,10 @@ dotfiles смонтированы только на чтение, настоящ
 `bwrap --unshare-user --uid 1000 --gid 1000 --unshare-pid --ro-bind <rootfs> / --dev /dev --proc /proc
 --tmpfs /tmp --tmpfs /run --bind <home> /home/user --ro-bind ~/.dotfiles /dotfiles …`; пакеты ставить отдельным
 запуском с `uid 0` (`DisableSandbox` в `pacman.conf`, `pacman-key --init`).
+
+### Доступ агента к KVM и GPU (AI-SBX-14, ADR-50)
+
+Причина «нет KVM» в прогоне выше: агент работает в песочнице лаунчера с минимальным `/dev`. Решение 2026-11-17 —
+опция `--device kvm|dri`, адаптер `claude` включает её. Начнёт действовать после `just build`/`test`/`boot`
+и перезапуска долгоживущей песочницы агента; тогда повторить прогон с ВМ другого дистрибутива (QEMU `-enable-kvm`,
+cloud-образ, `checks/portability.sh --live` на живом Hyprland) и закрыть исключения Hyprland/hyprpaper.
