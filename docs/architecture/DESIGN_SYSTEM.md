@@ -558,6 +558,8 @@ timeout_ms = 6000
 | видео | `mpv/theme.conf` | conf | `include=` в `mpv.conf` |
 | игровой оверлей | `mangohud/MangoHud.conf` | conf, файл целиком | шаблон целиком |
 | мессенджер | `theme/export/glass-tide-<вариант>.tdesktop-theme` | ZIP с `colors.tdesktop-theme` | импорт в приложении один раз |
+| редактор Zed | `zed/themes/glass-tide.json`, `zed/settings.json` | JSON (с `//`-комментариями) | тема — штатно из `~/.config/zed/themes`; `settings.json` целиком из шаблона (шрифты — токены, DSN-TOK-4/8) |
+| заметки Obsidian | `theme/export/glass-tide-obsidian.css` | CSS-сниппет | копируется в `<хранилище>/.obsidian/snippets/` вручную |
 | сторонние | `theme/export/base24-<вариант>.yaml` | base24 | по необходимости (DSN-COL-12) |
 | Nix | `palette.toml` напрямую | TOML | `builtins.fromTOML` в фиче `theme` (DSN-TOK-6) |
 
@@ -813,6 +815,8 @@ end
 | blueman, swappy | `bluetooth-manager`, `screenshot` | L4 | через GTK | — |
 | hyprpolkitagent | `polkit-agent` | L5 | Qt/QML — `ПРОВЕРИТЬ`, подхватывает ли qt6ct (Приложение I.6, M6) | — |
 | LibreOffice, Thunderbird, zathura | `office-suite`, `mail-calendar`, `documents` | L4 | LibreOffice/Thunderbird — системная тёмная тема GTK (theme.nix, R6.6); zathura — `zathura/zathurarc` из генератора, `recolor` по умолчанию выключен (страница как в документе), клавиша `R` переключает (DSN-CMP-18) | установлены (R7.1); `ПРОВЕРИТЬ` вживую |
+| Zed | — (`zed`, dev) | L4 | `zed/themes/glass-tide.json` и `zed/settings.json` из генератора (сплошное окно, DSN-EXC-3); шрифты — токены `ui`/`mono`, размеры — умолчания Zed (его единицы — px, не pt) | сгенерировано, `ПРОВЕРИТЬ` вживую: тема подхватывается и выбирается, комментарии `//` в теме принимаются |
+| Obsidian | — (`obsidian`, office) | L4 | CSS-сниппет `theme/export/glass-tide-obsidian.css` из генератора; включается вручную в хранилище (конфиг Obsidian живёт в `.obsidian` хранилища, вне реестра) | сгенерировано, `ПРОВЕРИТЬ` вживую |
 
 ## P.4 Новые записи реестра dotfiles (DOT-2)
 

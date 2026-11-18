@@ -528,7 +528,7 @@
 | `mcp-jira` | `mcp-atlassian` 0.23.1 из готовых колёс PyPI с зафиксированным хэшем, зависимости из nixpkgs, ограничения версий `fastmcp`/`mcp`/`fakeredis` сняты; запуск под учётной записью шлюза | В nixpkgs пакета нет (ПРОВЕРЕНО, 2026-11-14); прежний запуск `uvx …@latest` загружал код из сети (AI-CTX-5). Работоспособность со снятыми ограничениями ПРОВЕРЕНА по stdio (63 инструмента); при обновлении `fastmcp`/`mcp` в канале — вернуть ограничения и пересобрать. Токен — `ai.gateway.mcpToken.jira`; адрес трекера — политика хоста |
 | Единая документация | `AGENTS.md`, `CLAUDE.md` (импорт), `.agents/skills/*/SKILL.md` | Claude Code: умолчание встроенного плагина инструкций — `claude-md-or-agents-md` (ПРОВЕРЕНО в бинарнике 2.1.323, R9.22): в проекте без своего `CLAUDE.md` читается `AGENTS.md`, а `CLAUDE.md` с импортом `@AGENTS.md` читается штатно, импортированный файл повторно не грузится — для своих проектов `--settings` не нужен и не передаётся (флаги окна не восстанавливаются при `--resume`, ADR-48). Объединяющий режим `claude-md-and-agents-md` — настройка плагина `cc-plugin-agents-md@builtin` (`instructionFiles`); в чужих репозиториях с обоими файлами без импорта Claude читает `CLAUDE.md`, что допустимо (AI-AGT-8: нативное чтение); включать режим — по решению владельца через настройки пользователя, путь ключа ПРОВЕРИТЬ при необходимости. Навыки — только из `.claude/skills` (симлинк на `.agents/skills`); `/init` не используется. DeepSeek Harness: `AGENTS.md` и `CLAUDE.md` в каждом каталоге штатно, импорты `@` не разбирает (поэтому в своих проектах `CLAUDE.md` короткий); глобально читает `<agentsHome>/AGENTS.md` и `<agentsHome>/skills`, `agentsHome` = `$DSH_AGENTS_HOME` или `~/.agents` (ПРОВЕРЕНО по заметкам пакета 0.2.1-rc.3): в песочнице домашний каталог скрыт, поэтому адаптер задаёт `DSH_AGENTS_HOME=~/.config/ai` (виден на чтение, ссылка на `dotfiles/ai`). Память Claude Code штатная (`~/.claude/projects/<проект>/memory/`); у DeepSeek Harness 0.2.1-rc.3 встроенной памяти нет |
 | Клиент в Neovim | `minuet-ai.nvim` (Ollama, FIM) | Frontend по умолчанию — virtual text; cmp/blink опционально. Чат: `codecompanion.nvim` (чистый Lua) |
-| Необязательные редакторы | Zed — провайдер edit predictions `ollama`; PyCharm — встроенный Full Line (локально, без VRAM) + Continue/ProxyAI → Ollama | Вне реестра dotfiles; только если установлены (DEV-9) |
+| Необязательный редактор | Zed (фича `zed`) — провайдер edit predictions `ollama` | Конфиг — `zed/` в реестре dotfiles; адрес и модель в `settings.json` литералом (Zed не читает окружение); только если установлен (DEV-9) |
 | `compute-cache` | Кэш вычислительной платформы | Адрес и ключ — ПРОВЕРИТЬ (A.7 Архитектуры) |
 
 ### P.2 Политика VRAM → модели (для хоста A.2: `vramGiB = 4`, `compute = cuda`)
@@ -603,7 +603,6 @@
 | Исключение | Причина | Компенсация |
 |---|---|---|
 | Загрузка моделей реализацией по изменяемому тегу | Реализация не хэширует | Список тегов в фиче; при потребности жёсткой фиксации — отдельный ADR (локальный сервер на моделях в формате GGUF, получаемых по хэшу) |
-| Плагины JetBrains ставятся внутри IDE | Особенность IDE | Только для необязательных редакторов; список в runbook |
 | Режим входа по подписке не проходит через шлюз | Особенность приложения | AI-GW-11 |
 
 ### P.6 Отклонённые реализации
@@ -628,7 +627,7 @@
 - Версии крейта `metrics`: lib.rs/crates/metrics
 - Состояние Tabby: yespress.io/products/tabby.md
 - Ollama в NixOS: wiki.nixos.org (страницы Ollama, Cuda); обсуждение CUDA-кэша: discourse.nixos.org
-- Клиенты: github.com/milanglacier/minuet-ai.nvim; zed.dev/docs/ai (edit prediction, local models); jetbrains.com/help/pycharm (Full Line completion)
+- Клиенты: github.com/milanglacier/minuet-ai.nvim; zed.dev/docs/ai (edit prediction, local models)
 - Песочница Claude Code: code.claude.com/docs/en/sandboxing
 - Serena: github.com/oraios/serena
 - Модуль `services.litellm`: mynixos.com/nixpkgs/options/services.litellm.settings

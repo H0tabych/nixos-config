@@ -319,9 +319,9 @@ let n = config.flake.modules.nixos; in {
 
 **shell:** `shell-<р>` (N+H), `vcs-tools` (N+H: git — nix-фетчеру input'ов до логина и активации Home Manager, системная нужда по ARCH-11; H — lazygit, сопутствующая TUI-утилита без системной нужды), `env-manager` (N: автоактивация проектных окружений, слой совместимости для динамических бинарников), `prompt-<р>` (N+H: путь к конфигу — переменная окружения, DOT-12), `terminal-<р>` (H), `file-manager-<р>` (H), `btop` (H: системный монитор, без слота — альтернативы не рассматриваются), `search-tools` (N: fzf/ripgrep/fd — «быстрый поиск» из глобального минимума DEV-1, без слота), `dotfiles-link` (N+H: раздел 8), `user-dirs` (H: стандартные каталоги XDG — Desktop/Documents/Downloads/…, имена латиницей).
 
-**dev:** `editor-<р>` (N: пакет и переменная редактора по умолчанию — в одной области видимости, иначе переменная ссылается на отсутствующий в PATH бинарник (DEV-9); глобальный редактор предусмотрен DEV-1), `lsp-global` (H), `containers` (N+H), `databases` (H), `api-tools` (H, опц.), `pycharm` (H, опц.: необязательная JetBrains IDE для Python вне реестра приложений, DEV-9/AI-CMP-8).
+**dev:** `editor-<р>` (N: пакет и переменная редактора по умолчанию — в одной области видимости, иначе переменная ссылается на отсутствующий в PATH бинарник (DEV-9); глобальный редактор предусмотрен DEV-1), `lsp-global` (H), `containers` (N+H), `databases` (H), `api-tools` (H, опц.), `zed` (H, опц.: GUI-редактор, конфиг и тема — в реестре dotfiles; провайдер edit predictions — локальный Ollama; DEV-9/AI-CMP-8).
 
-**office / media / gaming / ai:** `office-suite`, `mail-calendar`, `documents`, `communication`, `print-scan` (опц.); `video-player`, `browser`, `torrent`; `game-platform`, `compat-layer`, `game-optimizer`, `overlay`; `compute-cache`, `inference-service-<р>` (слот), `container-gpu`, `agents-tools`; подсистема ML добавляет `ai-facts`, `llm-gateway`, `code-context`, `web-search-<р>` (слот), `mcp-jira` (AI_SUBSYSTEM 2.2, R9.23).
+**office / media / gaming / ai:** `office-suite`, `mail-calendar`, `documents`, `communication`, `print-scan` (опц.), `obsidian` (H, опц.: заметки, без слота; конфиг лежит в хранилище, в реестр dotfiles не входит); `video-player`, `browser`, `torrent`; `game-platform`, `compat-layer`, `game-optimizer`, `overlay`; `compute-cache`, `inference-service-<р>` (слот), `container-gpu`, `agents-tools`; подсистема ML добавляет `ai-facts`, `llm-gateway`, `code-context`, `web-search-<р>` (слот), `mcp-jira` (AI_SUBSYSTEM 2.2, R9.23).
 
 **Пресеты хоста (nixos):** `base`, `laptop`, `workstation`, `server`, `vm` — по классу хоста; `<capability>` — системная часть возможности; `tunnel` — сетевая среда хоста (не capability, VPN_SUBSYSTEM ADR-25).
 **Пресеты пользователя (homeManager):** имена совпадают с capability (`desktop`, `development`, `office`, `media`, `gaming`, `ml`, `containers`).
@@ -802,7 +802,7 @@ Python, SQL, C/C++, Rust.
 - sql: postgresql + sqlfluff + pgcli.
 - ml-cuda: `cudaPackages` для sm_75, только кэшируемые бинарные сборки.
 - Запасные LSP глобально: nil или nixd, lua-language-server, bash-language-server, pyright, ruff, clangd, sqls/sqlfluff; **`rust-analyzer` только из проектного окружения** (DEV-4).
-- `uv` — тоже глобально запасной (DEV-4): версия не привязана жёстко к тулчейну проекта, а GUI-IDE (PyCharm) запускается не из шелла и не видит project-direnv.
+- `uv` — тоже глобально запасной (DEV-4): версия не привязана жёстко к тулчейну проекта, а GUI-редактор (Zed) запускается не из шелла и не видит project-direnv.
 - Форматтеры: nixfmt (единственный для Nix), stylua, shfmt. Отладка: debugpy, lldb/codelldb.
 - Парсеры treesitter: rust, c, cpp, python, sql, nix, lua, bash, toml, yaml, json, markdown, markdown_inline (техническая зависимость markdown — инъекция инлайн-текста, не отдельный язык).
 
