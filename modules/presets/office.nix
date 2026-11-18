@@ -1,6 +1,6 @@
 # Фича: office · Слот: — · Домен: presets · Классы: H · Для: пользователей с capability office
 # Контракт: STR-7 (пресет — только imports). Мессенджер (R4.5); office-suite,
-# mail-calendar, documents — R7.1.
+# mail-calendar, documents — R7.1; obsidian (заметки, без слота).
 # Зависимости: —
 { config, ... }:
 let
@@ -13,6 +13,7 @@ in
       hm.office-suite-libreoffice
       hm.mail-calendar-thunderbird
       hm.documents-zathura
+      hm.obsidian
     ];
   };
 }
