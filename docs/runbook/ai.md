@@ -43,9 +43,10 @@ systemctl status llm-gateway-$USER
 journalctl -u llm-gateway-$USER -n 50     # журнал системной службы, нужны права на чтение журнала
 ```
 
-Юнит не должен быть `failed` и без облачных ключей (AI-A14): провайдер с пустым секретом
-вычёркивается, его роли отвечают ошибкой. Справочник цен (по нему считаются бюджеты) — файл из
-хранилища, собранный из `my.ai.gateway.providers.<id>.prices` (ADR-49), его служба не скачивает.
+Шлюз — MCP-вход агентов (`jira`, `web-search`) и локальные роли (Ollama); облачных провайдеров, ролей,
+цен и бюджетов в нём нет (ADR-51): агенты ходят к моделям сами. Юнит не должен быть `failed` и без
+секретов серверов MCP-шлюза (AI-A14): сервер без секрета вычёркивается. Справочник цен Bifrost —
+пустой файл из хранилища, служба его с сайта не скачивает.
 Справочник параметров моделей первый старт на новом состоянии скачивает с сайта апстрима: без сети
 (`direct` с kill switch) служба повторяет попытки каждые 5 с и поднимется, когда сеть появится;
 дальше кэш лежит в состоянии.
@@ -81,26 +82,19 @@ curl -s "$AI_GATEWAY_URL/v1/chat/completions" \
 Ожидается ответ модели, а `/api/ps` показывает загруженную модель. При отказе
 смотрите журнал шлюза.
 
-**Бюджет шлюза: `402 QUOTA` «Budget exceeded: vk <агент>-online budget exceeded: X >= Y»** (AI-GW-6,
-ADR-49). Это лимит шлюза на ключ (`my.ai.gateway.budget` в `modules/hosts/<хост>.nix`), а не баланс
-провайдера. На `sgms-laptop` лимита нет (решение владельца 2026-11-14): расход контролируется у
-провайдера, раздел бюджетов в конфиге шлюза пустой. Стоимость запросов шлюз всё равно пишет в журнал по
-ценам из `my.ai.gateway.providers.<id>.prices` (у DeepSeek в политике тариф вне пика; пиковые часы
-учитываются вдвое дешевле). Если после применения лимит остался в базе (старый `402`), посмотреть и
-удалить его вручную (root):
+**Расход облачных моделей.** Шлюз его не считает (ADR-51): у `dsh` — счёт и предоплата у DeepSeek
+(консоль провайдера) и журнал сессий самого `dsh`; `claude` и `codex` — лимиты подписки у их вендоров.
+Старые лимиты шлюза (`402 Budget exceeded`, ADR-49) ушли вместе с облачной частью; если после перехода
+в базе осталась запись бюджета, он на работу не влияет — раздел `budgets` в `config.json` пустой и
+авторитетен при каждом старте.
 
-```sh
-sudo nix shell nixpkgs#sqlite -c sqlite3 -readonly /var/lib/private/llm-gateway-$USER/config.db \
-  'select id, max_limit, current_usage, reset_duration from governance_budgets;'
-sudo systemctl stop llm-gateway-$USER
-sudo cp /var/lib/private/llm-gateway-$USER/config.db /var/lib/private/llm-gateway-$USER/config.db.bak
-sudo nix shell nixpkgs#sqlite -c sqlite3 /var/lib/private/llm-gateway-$USER/config.db \
-  "delete from governance_budgets where id = 'budget-dsh-online';"
-sudo systemctl start llm-gateway-$USER
-```
-
-Откат: остановить службу и вернуть `config.db.bak`. Имена таблицы и полей — по бинарнику Bifrost 2.1.0.
-Вернуть лимит — задать `my.ai.gateway.budget.maxUSD` и применить по OPS-3.
+**Ключ DeepSeek для `dsh`.** Секрет — строка `ai.gateway.providerKey.primary` в
+`secrets/users/<user>.yaml` (имя историческое; переименовать в `ai.agents.dsh.apiKey` — `just sops-edit` и
+`my.ai.agentKeys.dsh.sopsKey` в `modules/hosts/<хост>.nix`). Фича `agents-keys` кладёт его файлом 0400
+пользователя в `/run/secrets/ai.agents.dsh.<user>`, путь — в `~/.config/machine.d/ai-agents-env`
+(`AI_AGENT_KEYFILE_DSH`); лаунчер читает файл снаружи песочницы и передаёт значением в
+`DEEPSEEK_API_KEY`. Нет файла — лаунчер предупреждает, `dsh` отвечает `MISSING_CREDENTIAL`. Замена
+ключа: `just sops-edit secrets/users/<user>.yaml`, пересборка по OPS-3, новое окно `dsh`.
 
 ### Песочница агентов
 
@@ -113,12 +107,34 @@ sudo systemctl start llm-gateway-$USER
 свои. Сокетов сессии, системной шины, `/run/secrets*` и `/run/docker.sock` внутри нет. Из
 `~/.config` видны `machine.d`, `ai`, `git`, `direnv` и каталог роли (`--config`), только чтение.
 У роли свои `XDG_CACHE/STATE/DATA_HOME` в `~/.local/state/agents/<роль>/`. Ключ шлюза попадает в
-окружение агента значением. Состояния шлюза в `$HOME` больше нет (R9.16). `dsh` подключается нативно (R9.18, AI-ROLE-5): шлюз — `DEEPSEEK_BASE_URL`, ключ — `DEEPSEEK_API_KEY`
-(значением), модель — собственные модели провайдера в интерфейсе, выбор хранит сам `dsh` в
-`~/.local/state/agents/dsh/dsh-home/`; лаунчер профили не пишет. Политика Nix — патч из хранилища
-флагом `--patch` (`modules/ai/_agents-tools-dsh-policy.nix`): выключены встроенный поиск, телеметрия,
-выгрузка журнала сессии и перечня пакетов провайдеру (`dsh_session_log`, `dsh_plugin_packages`),
-менеджер плагинов. Файл политики приоритетнее переключателей в настройках.
+окружение агента значением. Состояния шлюза в `$HOME` больше нет (R9.16). `dsh` ходит к DeepSeek
+напрямую (ADR-51): Anthropic Messages на `api.deepseek.com/anthropic` (`DEEPSEEK_BASE_URL` не задан),
+ключ — `DEEPSEEK_API_KEY` значением из файла `agents-keys`; модель и усилие рассуждения выбирает
+владелец в интерфейсе, выбор хранит сам `dsh` в `~/.local/state/agents/dsh/dsh-home/`; лаунчер профили
+не пишет. Политика Nix — патч из хранилища флагом `--patch`
+(`modules/ai/_agents-tools-dsh-policy.nix`): выключены телеметрия, выгрузка журнала сессии и перечня
+пакетов провайдеру (`dsh_session_log`, `dsh_plugin_packages`), менеджер плагинов; родные поиск и загрузка
+страниц DeepSeek работают. Файл политики приоритетнее переключателей в настройках. `dsh`, как `claude` и
+`codex`, в `offline` не запускается.
+
+**Codex (ADR-52).** Вход по подписке — один раз: `agent-launcher codex login --device-auth`, код
+вводится в браузере хоста. Состояние — `~/.codex` (ослабленный режим AI-SBX-12), инструкции —
+`~/.codex/AGENTS.md` (ссылка на `ai/AGENTS.md`). Режимы — опциями `-c` (см. шапку
+`_agents-tools-codex.nix`); `controlled` (`workspace-write`) — вложенная песочница Codex, ПРОВЕРИТЬ.
+MCP-инструменты: `/mcp` в интерфейсе должен показать `gateway` и локальные серверы
+(`ai/generated/codex/local.overrides`; после правки `ai/mcp-servers.toml` — `python3 ai/gen/gen.py` в
+dotfiles и коммит там).
+
+**Браузер агентов (Playwright, ADR-53, AI-SBX-15).** Команда `playwright-mcp` — обёртка из фичи
+`code-context`: окно открывается на Wayland-сессии (сокет привязывает опция лаунчера `--wayland`, GL —
+`--device dri`), профиль — `~/.local/state/agents/<агент>/state/playwright-mcp/profile` (у `claude` —
+`~/.local/state/agents/claude/state/...`): входы на сайты сохраняются, вводит их человек в окне (или
+`--secrets <dotenv>` — значения модель не видит). Два окна одного агента один профиль не откроют. Без
+сокета Wayland (сеанс без графики, ВМ) браузер стартует без окна. Диагностика: `playwright-mcp` в
+песочнице с `LD_LIBRARY_PATH` не падает (`GLIBC_2.43 not found` — значит запущена не обёртка);
+`ls /run/user/$(id -u)` внутри песочницы показывает сокет `wayland-*`; программный рендеринг вместо GL
+(`/run/opengl-driver` не виден или нет `/dev/dri`) — окно работает, но медленнее.
+Перезапуск долгоживущей песочницы `claude` после пересборки: `systemctl --user stop agents-claude`.
 Если в проекте не работает `nix develop`/`direnv` — это пробел списка корня: смотрите, чего не
 хватает внутри (`ls /nix/var/nix`, `ls /etc`), и правьте `_agents-tools-sandbox.nix`.
 
