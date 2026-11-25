@@ -88,11 +88,11 @@ bench-prompt config *dirs:
 agents-bench agent *args:
     python3 scripts/agents-bench.py {{ agent }} {{ args }}
 
-# Прогон набора 8.2 через agent-launcher без интерфейса (R9.24, режим autonomous): клон проекта,
-# задачи из scripts/agents-bench-8.2-dof.tsv, сводка в ~/bench-8.2/<дата>/. Запускать в
-# обычном терминале хоста, не внутри песочницы агента. Пример: just agents-bench-run ~/Documents/my_projects/DoF
-agents-bench-run project *args:
-    bash scripts/agents-bench-run.sh {{ project }} {{ args }}
+# Прогон набора 8.2 через agent-launcher без интерфейса (R9.24, режим autonomous): отдельный клон
+# публичного проекта из scripts/agents-bench-8.2-humanize.tsv, сводка в ~/bench-8.2/<дата>/.
+# Запускать в обычном терминале хоста, не внутри песочницы агента. Опции: --only 3,4 --timeout <с>.
+agents-bench-run *args:
+    bash scripts/agents-bench-run.sh {{ args }}
 
 # SEC-9: pre-commit сканер секретов. Однократно на клон; devshell этого не делает
 # (AI-SBX-7: shellHook, переписывавший core.hooksPath, обходил защиту метаданных git).
