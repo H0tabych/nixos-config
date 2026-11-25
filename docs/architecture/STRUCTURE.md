@@ -590,10 +590,10 @@ nixos-config/
 ├── scripts/                  check-structure.sh  check-lock.sh  check-doc-ids.sh
 │                            check-secrets.sh  dotfiles-clone.sh  hibernate-offset.sh  new-feature.sh
 └── docs/
-    ├── README.md  runbook.md  runbook/{tunnel,ai}.md
+    ├── README.md  runbook.md  runbook/{tunnel,storage,ai,design-system,portability,keys,recovery}.md
     ├── architecture/         ARCHITECTURE.md  STRUCTURE.md  AI_SUBSYSTEM.md  VPN_SUBSYSTEM.md  DESIGN_SYSTEM.md  ROADMAP.md
     ├── hosts/                sgms-laptop.md
-    └── adr/                  ADR-001-….md … ADR-047-….md
+    └── adr/                  ADR-001-….md … ADR-053-….md
 
 dotfiles/                     (отдельный репозиторий)
 ├── README.md  REGISTRY.md  install.sh  machine.d.example/

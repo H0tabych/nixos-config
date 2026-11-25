@@ -9,6 +9,10 @@ VPN_SUBSYSTEM.md P.6/P.7).
 
 ## Темы
 
+- [`runbook/recovery.md`](runbook/recovery.md) — восстановление: выбор уровня (откат поколения →
+  снимок → копия → переустановка), переустановка с нуля (SEC-12; `just bootstrap` не реализован)
+- [`runbook/keys.md`](runbook/keys.md) — замена ключей sops (пользователь, хост), ротация при
+  компрометации (SEC-7, SEC-11, SEC-13)
 - [`runbook/tunnel.md`](runbook/tunnel.md) — туннель: реестр отступлений (VPN-CLI-3), upstream для LLM
   (VPN-LLM-1…6), процедура изменения конфига выхода (VPN-SRV-7)
 - [`runbook/storage.md`](runbook/storage.md) — хранилище: снимки и восстановление
