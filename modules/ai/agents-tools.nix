@@ -95,6 +95,10 @@ _: {
       # `dsh --dump-config`, список записей в _agents-tools-dsh-policy.nix).
       deepseekHarness = pkgs.unstable.deepseek-harness;
 
+      # Codex CLI: в 26.05 версия 0.146.0, в unstable — актуальная; точечно из unstable
+      # (ARCH-14, как у claude-code и dsh). Пакет — нативный Rust-бинарник, не npm.
+      codexCode = pkgs.unstable.codex;
+
       # Политика Nix для dsh (поиск, телеметрия, менеджер плагинов) — в хранилище.
       dshPolicy = pkgs.callPackage ./_agents-tools-dsh-policy.nix { };
 
@@ -105,6 +109,7 @@ _: {
           inherit deepseekHarness dshPolicy;
           webPortBase = dshWebPortBase;
         })
+        (pkgs.callPackage ./_agents-tools-codex.nix { inherit codexCode; })
       ];
 
       hostTool = pkgs.callPackage ./_agents-tools-host.nix {

@@ -70,6 +70,9 @@ let
     // lib.optionalAttrs (builtins.pathExists "${aiSrc}/CLAUDE.md") {
       ".claude/CLAUDE.md" = "ai/CLAUDE.md";
     }
+    // lib.optionalAttrs (builtins.pathExists "${aiSrc}/AGENTS.md") {
+      ".codex/AGENTS.md" = "ai/AGENTS.md";
+    }
     // builtins.listToAttrs (
       lib.concatMap (n: [
         {
