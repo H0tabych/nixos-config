@@ -3,8 +3,9 @@
 # AI-GW-1). Отдельным файлом — чтобы тот же юнит собирал и ВМ-тест
 # (tests/llm-gateway.nix) с обычными файлами вместо секретов sops.
 #
-# Секреты. Файлы провайдеров принадлежат root (0400) и доходят до службы только через
-# LoadCredential — ни пользователь, ни агент их не читают (AI-A6). Ключи доступа
+# Секреты. Облачных провайдеров в шлюзе нет (ADR-051), секреты — только серверов MCP-шлюза:
+# root копирует их в состояние службы (0400, её динамический пользователь), ни пользователь,
+# ни агент их не читают (AI-A6). Ключи доступа
 # (по паре «агент × режим») и учётные данные управляющего API служба генерирует сама
 # и хранит в своём состоянии (/var/lib/private/…, 0700, DynamicUser): они постоянны
 # (переживают перезапуск; ротация — удалить файл и перезапустить). Пользователю
@@ -13,9 +14,9 @@
 # строится из разрешённого, AI-SBX-1). Копию делает ExecStartPre с «+» (от root).
 #
 # Рендер конфига. Шаблон конфига (соседняя приватная часть) содержит метки `@ИМЯ@`; при старте
-# jq подставляет значения (литерально, без спецсимволов sed). Провайдер с пустым или
-# отсутствующим секретом вычёркивается вместе с его правилами и правами ключей —
-# юнит не `failed` без облачных ключей (AI-GW-9, AI-A14).
+# jq подставляет значения (литерально, без спецсимволов sed). Сервер MCP с пустым или
+# отсутствующим секретом вычёркивается вместе с правами ключей — юнит не `failed` без секретов
+# (AI-GW-9, AI-A14).
 # AI-GW-10 (запуск по требованию) не реализован: не подтверждено, что Bifrost умеет
 # socket-activation — известное отступление, как и раньше.
 {
@@ -26,15 +27,12 @@
   group,
   port,
   template, # attrset — шаблон конфига шлюза
-  providers, # my.ai.gateway.providers: id → { type, … } (имя в конфиге шлюза — тип)
   keyIds, # id ключей доступа: "<агент>-<режим>"
-  credPath, # id провайдера → путь к файлу секрета
   mcpSecrets ? [ ], # серверы MCP-шлюза с секретом: [ { id, name, src } ], src — файл секрета (AI-GW-14)
   extraEnvironment ? { },
 }:
 let
   unit = "llm-gateway-${user}";
-  providerIds = lib.attrNames providers;
   templateFile = pkgs.writeText "${unit}.json" (builtins.toJSON template);
   bins = lib.makeBinPath [
     pkgs.coreutils
@@ -48,11 +46,6 @@ let
     mark = "@KEY_${id}@";
     inherit id;
   }) keyIds;
-  provVars = lib.imap0 (i: id: {
-    var = "p${toString i}";
-    mark = "@PROVIDER_${id}@";
-    inherit id;
-  }) providerIds;
   adminVars = [
     {
       var = "au";
@@ -68,18 +61,14 @@ let
     mark = "@MCP_${s.id}@";
     inherit (s) id name;
   }) mcpSecrets;
-  allVars = keyVars ++ provVars ++ mcpVars ++ adminVars;
+  allVars = keyVars ++ mcpVars ++ adminVars;
   substitute = lib.concatMapStringsSep " | " (
     v: "sub(\"${v.mark}\"; (" + "$" + v.var + " | rtrimstr(\"\\n\")))"
   ) allVars;
 
   filter = pkgs.writeText "${unit}.jq" ''
-    def alive($p): ($dead | index($p) | not);
     def aliveMcp($n): ($deadmcp | index($n) | not);
-    .providers |= with_entries(select(.key as $k | alive($k)))
-    | .governance.routing_rules |= map(select(all(.targets[]; alive(.provider))))
-    | .governance.virtual_keys |= map(.provider_configs |= map(select(alive(.provider))))
-    | .mcp.client_configs |= map(select(aliveMcp(.name)))
+    .mcp.client_configs |= map(select(aliveMcp(.name)))
     | .governance.virtual_keys |= map(.mcp_configs |= map(select(aliveMcp(.mcp_client_name))))
     | walk(if type == "string" then ${substitute} else . end)
   '';
@@ -105,20 +94,7 @@ let
       --rawfile au "$state/keys/admin-user"
       --rawfile ap "$state/keys/admin-pass"
     )
-    dead=()
-    ${lib.concatMapStringsSep "\n" (v: ''
-      cred="$CREDENTIALS_DIRECTORY/provider-${v.id}"
-      if [ -s "$cred" ] && grep -q '[^[:space:]]' "$cred"; then
-        args+=(--rawfile ${v.var} "$cred")
-      else
-        args+=(--arg ${v.var} "")
-        dead+=(${lib.escapeShellArg providers.${v.id}.type})
-        echo "llm-gateway: нет ключа провайдера ${v.id} — его роли недоступны (AI-GW-9)" >&2
-      fi
-    '') provVars}
-    deadjson=$(jq -cn '$ARGS.positional' --args ''${dead[@]+"''${dead[@]}"})
-
-    # Серверы MCP-шлюза без секрета вычёркиваются так же, как провайдеры (AI-GW-9, AI-A14).
+    # Серверы MCP-шлюза без секрета вычёркиваются (AI-GW-9, AI-A14).
     deadmcp=()
     ${lib.concatMapStringsSep "\n" (v: ''
       cred="$state/mcp-secrets/${v.id}"
@@ -132,7 +108,7 @@ let
     '') mcpVars}
     deadmcpjson=$(jq -cn '$ARGS.positional' --args ''${deadmcp[@]+"''${deadmcp[@]}"})
 
-    jq "''${args[@]}" --argjson dead "$deadjson" --argjson deadmcp "$deadmcpjson" -f ${filter} ${templateFile} \
+    jq "''${args[@]}" --argjson deadmcp "$deadmcpjson" -f ${filter} ${templateFile} \
       > "$state/config.json.new"
     mv "$state/config.json.new" "$state/config.json"
   '';
@@ -185,7 +161,6 @@ in
     DynamicUser = true;
     StateDirectory = unit;
     StateDirectoryMode = "0700";
-    LoadCredential = map (id: "provider-${id}:${credPath id}") providerIds;
     ExecStartPre = [
       "+${mcpSync}"
       "${prepare}"
@@ -193,8 +168,8 @@ in
     ];
     ExecStart = "${pkg}/bin/bifrost-http -host 127.0.0.1 -port ${toString port} -app-dir %S/${unit}";
     ExecStopPost = "+${unpublish}";
-    # Первый старт без сети (справочник цен грузится с сайта апстрима, пока нет кэша
-    # в состоянии) — повторять, а не превращаться в `failed` (AI-GW-9).
+    # Первый старт без сети (справочник параметров моделей грузится с сайта апстрима, пока нет
+    # кэша в состоянии) — повторять, а не превращаться в `failed` (AI-GW-9).
     Restart = "on-failure";
     RestartSec = 5;
     # AI-GW-1, AI-GW-13: минимум прав.

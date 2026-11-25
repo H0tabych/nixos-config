@@ -1,12 +1,10 @@
-# Проверка свойства (STRUCTURE 5.1): шлюз v2 (ADR-45, R9.16) — AI-A14, AI-A6 (права),
-# матрица ключей «агент × режим» (AI-GW-4), сквозной маршрут (AI-ROLE-5), роли (AI-GW-2).
+# Проверка свойства (STRUCTURE 5.1): шлюз (ADR-45, ADR-051) — AI-A14, AI-A6 (права),
+# матрица ключей «агент × режим» (AI-GW-4), локальные роли (AI-GW-2), MCP-шлюз (AI-GW-14).
 # Конфиг шлюза не показывает, что делает настоящий бинарник Bifrost с правами ключей, поэтому
 # тест запускает ТОТ ЖЕ юнит (`modules/ai/_llm-gateway-service.nix`) и ТОТ ЖЕ шаблон
-# (`_llm-gateway-config.nix`), что и хост, с реальным бинарником, а вместо облачного
-# провайдера и локального инференса — фальшивый HTTP-сервер на loopback (запросы пишутся в
-# журнал: видно, куда дошёл запрос, под какой моделью и с каким ключом провайдера).
-# Секрет провайдера — обычный файл root 0400 вместо sops; второй провайдер с ПУСТЫМ секретом
-# проверяет AI-A14 (юнит не `failed` без облачных ключей).
+# (`_llm-gateway-config.nix`), что и хост, с реальным бинарником, а вместо локального
+# инференса — фальшивый HTTP-сервер на loopback (запросы пишутся в журнал: видно, куда дошёл
+# запрос и под какой моделью). Облачных провайдеров в шлюзе нет: их отсутствие — тоже проверка.
 {
   pkgs,
   lib,
@@ -16,68 +14,19 @@ let
   buildConfig = import ../modules/ai/_llm-gateway-config.nix { inherit lib; };
   pkg = pkgs.callPackage ../modules/ai/_llm-gateway-package.nix { };
 
-  # Цены — как в политике хоста (USD за 1M токенов, ADR-49). `model-cheap` нарочно «дорогая»:
-  # $3 за токен, запрос фальшивого провайдера (1 + 1 токен) стоит $6 — бюджет $10 закрывается
-  # за пару запросов. Без цены (или если шлюз не понял справочник) расход был бы 0 и 402 не было бы.
-  price = input: output: {
-    inherit input output;
-    cacheRead = 0;
-  };
-  providers = {
-    primary = {
-      type = "deepseek";
-      baseUrl = "http://127.0.0.1:9000";
-      nativeModels = [
-        "native-big"
-        "native-small"
-      ];
-      prices = {
-        model-cheap = price 3000000 3000000;
-        native-big = price 0.1 0.2;
-        native-small = price 0.1 0.2;
-      };
-    };
-    spare = {
-      type = "openai";
-      baseUrl = "http://127.0.0.1:9000";
-      nativeModels = [ ];
-      prices.model-spare = price 0.1 0.2;
-    };
-  };
-  pricingFile = pkgs.writeText "pricing.json" (
-    builtins.toJSON (
-      import ../modules/ai/_llm-gateway-pricing.nix { inherit lib; } { inherit providers; }
-    )
-  );
-  cloudRoles = {
-    cost-autonomous = {
-      provider = "primary";
-      model = "model-cheap";
-    };
-    experimental = {
-      provider = "spare";
-      model = "model-spare";
-    };
-  };
+  pricingFile = pkgs.writeText "pricing.json" "{}";
   agents = {
     dsh = {
-      cloudRoles = [
-        "cost-autonomous"
-        "experimental"
-      ];
       localRoles = [ "local-chat" ];
-      nativeProvider = "primary";
+      mcp = [ ];
     };
     localonly = {
-      cloudRoles = [ ];
       localRoles = [ "local-chat" ];
-      nativeProvider = null;
+      mcp = [ ];
     };
     # AI-GW-14: агент только с инструментами (как claude по подписке): ролей нет.
     mcpagent = {
-      cloudRoles = [ ];
       localRoles = [ ];
-      nativeProvider = null;
       mcp = [
         "fake-http"
         "fake-stdio"
@@ -85,12 +34,6 @@ let
         "fake-file"
         "missing-file"
       ];
-    };
-    # Свой бюджет для проверки учёта по ценам (AI-GW-6, ADR-49) — не трогает ключи dsh.
-    pricetest = {
-      cloudRoles = [ "cost-autonomous" ];
-      localRoles = [ ];
-      nativeProvider = null;
     };
   };
   # MCP-шлюз (AI-GW-14): фальшивый http-сервер (9002, с секретом в заголовке), фальшивый stdio-сервер
@@ -155,19 +98,15 @@ let
     inherit agents;
   };
   template = buildConfig {
-    inherit providers cloudRoles agents;
+    inherit agents;
     mcp = mcpBuild;
-    budget = {
-      maxUSD = 10;
-      resetDuration = "1M";
-    };
     inference = {
       host = "127.0.0.1";
       port = 9001;
     };
     localRoles.local-chat = "local-model";
-    # Справочник цен — тот же генератор, что у хоста (ADR-49). ВМ без сети: справочник
-    # параметров моделей — из пустого файла (иначе первый старт грузит его с getbifrost.ai).
+    # Справочник цен — пустой файл, как у хоста. ВМ без сети: справочник параметров моделей — тоже
+    # из пустого файла (иначе первый старт грузит его с getbifrost.ai).
     pricingUrl = "file://${pricingFile}";
     frameworkOverride.framework.pricing.model_parameters_url = "file://${pkgs.writeText "model-params.json" "{}"}";
   };
@@ -182,18 +121,14 @@ let
     user = "alice";
     group = "alice";
     port = 11501;
-    inherit providers;
     keyIds = [
       "dsh-online"
       "dsh-offline"
       "localonly-online"
       "localonly-offline"
-      "pricetest-online"
-      "pricetest-offline"
       "mcpagent-online"
       "mcpagent-offline"
     ];
-    credPath = id: "/etc/test-secrets/provider-${id}";
     mcpSecrets = map (
       s:
       s
@@ -325,31 +260,16 @@ let
         return H
 
 
-    for p in (9000, 9001):
+    for p in (9001,):
         threading.Thread(
             target=ThreadingHTTPServer(("127.0.0.1", p), make(p)).serve_forever, daemon=True
         ).start()
     threading.Event().wait()
   '';
-  # AI-GW-6 — MAY (решение владельца 2026-11-14): без лимита раздел бюджетов пуст (и снимает
-  # прежние лимиты в базе), цены по-прежнему подаются шлюзу.
-  noBudget = buildConfig {
-    inherit providers cloudRoles agents;
-    mcp = mcpBuild;
-    budget = {
-      maxUSD = null;
-      resetDuration = "1M";
-    };
-    inference = {
-      host = "127.0.0.1";
-      port = 9001;
-    };
-    localRoles.local-chat = "local-model";
-    pricingUrl = "file://${pricingFile}";
-  };
 in
-assert noBudget.governance.budgets == [ ];
-assert noBudget.framework.pricing.pricing_url == "file://${pricingFile}";
+assert template.governance.budgets == [ ];
+assert builtins.attrNames template.providers == [ "local-inference" ];
+assert template.framework.pricing.pricing_url == "file://${pricingFile}";
 pkgs.testers.runNixOSTest {
   name = "llm-gateway";
 
@@ -377,15 +297,6 @@ pkgs.testers.runNixOSTest {
     ];
 
     environment.etc = {
-      "test-secrets/provider-primary" = {
-        text = "fake-provider-key\n";
-        mode = "0400";
-      };
-      # Пустой секрет — AI-A14: служба обязана стартовать, роль — отказывать явно.
-      "test-secrets/provider-spare" = {
-        text = "";
-        mode = "0400";
-      };
       "test-secrets/mcp-fake-http" = {
         text = "fake-mcp-token\n";
         mode = "0400";
@@ -464,62 +375,13 @@ pkgs.testers.runNixOSTest {
         assert len(provider_log()) == before, f"{why}: запрос дошёл до провайдера"
 
 
-    # --- AI-A14: служба жива при пустом секрете одного из провайдеров.
+    # --- AI-A14: служба жива без облачных ключей (их в шлюзе нет, ADR-051).
     machine.succeed("systemctl is-active llm-gateway-alice.service")
 
     # --- Ключи: файлы пользователя, права, постоянство.
     for name in ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline"]:
         assert key(name).startswith("sk-bf-"), name
     assert len({key(n) for n in ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline"]}) == 4
-
-    # --- Роль → провайдер и реальная модель (AI-GW-2); ключ провайдера — из секрета службы.
-    code, body = ask("cost-autonomous", key("dsh-online"))
-    assert code == 200, (code, body)
-    last = provider_log()[-1]
-    assert (last["port"], last["model"]) == (9000, "model-cheap"), last
-    assert last["auth"] == "Bearer fake-provider-key", last
-
-    # --- Сквозной маршрут (AI-ROLE-5): модель не подменяется.
-    for native in ["native-big", "native-small"]:
-        code, body = ask(native, key("dsh-online"))
-        assert code == 200, (native, code, body)
-        last = provider_log()[-1]
-        assert (last["port"], last["model"]) == (9000, native), last
-
-    # --- AI-A17 (часть, видимая шлюзу): клиент dsh говорит по Messages (`/anthropic/v1/messages`,
-    # ключ в `x-api-key`) и ходит по собственной модели провайдера; рассуждение и инструменты
-    # должны дойти до провайдера, модель — не подмениться.
-    def ask_messages(model, token, extra):
-        body = {"model": model, "max_tokens": 64, "messages": [{"role": "user", "content": "hi"}]}
-        body.update(extra)
-        out = machine.succeed(
-            f"curl -s -m 20 -o /tmp/out -w '%{{http_code}}' -H 'x-api-key: {token}' "
-            f"-H 'anthropic-version: 2023-06-01' -H 'Content-Type: application/json' "
-            f"-d {shlex.quote(json.dumps(body))} http://127.0.0.1:{PORT}/anthropic/v1/messages; echo; cat /tmp/out"
-        )
-        code, _, rest = out.partition("\n")
-        return int(code), rest
-
-    tools = [{
-        "name": "read_file", "description": "read",
-        "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}},
-    }]
-    code, body = ask_messages(
-        "native-big", key("dsh-online"),
-        {"thinking": {"type": "enabled", "budget_tokens": 1024}, "tools": tools},
-    )
-    assert code == 200, f"Messages-маршрут dsh: {code} {body}"
-    last = provider_log()[-1]
-    assert (last["port"], last["model"]) == (9000, "native-big"), last
-    assert last["tools"] == ["read_file"], f"AI-A17: инструменты не дошли до провайдера: {last}"
-    print("AI-A17 (Messages → провайдер): поля запроса у провайдера:", last["keys"], last["body"].get("thinking"))
-    assert any(k in last["keys"] for k in ("thinking", "reasoning_effort", "reasoning")), (
-        f"AI-A17: режим рассуждения потерян при преобразовании шлюзом: {last['keys']}"
-    )
-    # Ключ режима offline и здесь не даёт облако; ключ чужого агента — тоже.
-    before = len(provider_log())
-    code, _ = ask_messages("native-big", key("dsh-offline"), {})
-    assert code != 200 and len(provider_log()) == before, "offline-ключ на Messages-маршруте"
 
     # --- Локальная роль доступна обоим режимам.
     for name in ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline"]:
@@ -528,15 +390,13 @@ pkgs.testers.runNixOSTest {
         last = provider_log()[-1]
         assert (last["port"], last["model"]) == (9001, "local-model"), last
 
-    # --- Матрица запретов (AI-GW-4): до провайдера запрос не доходит.
-    denied("cost-autonomous", key("dsh-offline"), "offline-ключ и облачная роль")
-    denied("native-big", key("dsh-offline"), "offline-ключ и нативная модель")
-    denied("cost-autonomous", key("localonly-online"), "роль не из перечня агента")
-    denied("native-big", key("localonly-online"), "нативная модель без привязки к провайдеру")
-    denied("native-big", key("localonly-offline"), "offline-ключ localonly и нативная модель")
-    denied("experimental", key("dsh-online"), "роль провайдера без ключа (AI-GW-5, AI-GW-9)")
-    denied("native-big", None, "запрос без ключа")
-    denied("native-big", "sk-bf-wrong", "чужой ключ")
+    # --- Матрица запретов (AI-GW-4): до локального бэкенда запрос не доходит.
+    # Облачных ролей и моделей провайдера в шлюзе нет (ADR-051) — любая такая модель отклоняется.
+    denied("cost-autonomous", key("dsh-online"), "облачной роли в шлюзе нет")
+    denied("deepseek-v4-pro", key("dsh-online"), "модели провайдера в шлюзе нет")
+    denied("local-chat", key("mcpagent-online"), "локальная роль не из перечня агента")
+    denied("local-chat", None, "запрос без ключа")
+    denied("local-chat", "sk-bf-wrong", "чужой ключ")
     denied("unknown-model", key("dsh-online"), "модель вне перечней")
 
     # --- Управляющий API без учётных данных закрыт.
@@ -545,48 +405,32 @@ pkgs.testers.runNixOSTest {
     ).strip()
     assert code in ("401", "403"), f"management-API без входа: {code}"
 
-    # --- AI-A6 (права): секреты провайдера и состояние службы недоступны пользователю.
+    # --- AI-A6 (права): состояние службы и секреты серверов MCP недоступны пользователю.
     machine.succeed(f"su alice -c 'cat {KEYS}/dsh-online'")
-    machine.fail("su alice -c 'cat /etc/test-secrets/provider-primary'")
+    machine.fail("su alice -c 'cat /etc/test-secrets/mcp-fake-stdio'")
     machine.fail("su alice -c 'ls /var/lib/private/llm-gateway-alice'")
     machine.fail("su alice -c 'ls /var/lib/llm-gateway-alice'")
     assert machine.succeed(f"ls {KEYS}").split() == sorted(
         ["dsh-online", "dsh-offline", "localonly-online", "localonly-offline",
-         "pricetest-online", "pricetest-offline", "mcpagent-online", "mcpagent-offline"]
+         "mcpagent-online", "mcpagent-offline"]
     ), "пользователю публикуются только ключи доступа"
-    machine.fail(f"grep -r fake-provider-key {KEYS}")
     # Другой пользователь (без ml, USER-7) не читает чужие ключи и каталог.
     machine.fail(f"su bob -c 'cat {KEYS}/dsh-online'")
     machine.fail(f"su bob -c 'ls {KEYS}'")
     # Учётные данные управляющего API не публикуются пользователю.
     machine.fail(f"test -e {KEYS}/admin-pass")
 
-    # --- Права ключа в самом конфиге (root видит): инструменты пусты, бюджет есть (AI-GW-6, ADR-45).
+    # --- Права ключа в самом конфиге (root видит): инструменты пусты, облака нет (ADR-051).
     cfg = json.loads(machine.succeed("cat /var/lib/private/llm-gateway-alice/config.json"))
     vks = {v["id"]: v for v in cfg["governance"]["virtual_keys"]}
     assert all(v["mcp_configs"] == [] for k, v in vks.items() if k != "mcpagent-online")
     assert all(not v["allow_all_providers"] for v in vks.values())
-    assert "spare" not in cfg["providers"], "провайдер без ключа должен быть вычеркнут"
-    budgets = {b["virtual_key_id"]: b for b in cfg["governance"]["budgets"]}
-    assert budgets["dsh-online"]["max_limit"] == 10 and "localonly-online" not in budgets, budgets
-    # Справочник цен — файл из хранилища, построенный из политики (ADR-49), а не загрузка поставщика.
+    assert list(cfg["providers"]) == ["local-inference"], f"в шлюзе только локальный бэкенд: {list(cfg['providers'])}"
+    assert cfg["governance"]["budgets"] == [], "бюджетов нет (ADR-051)"
+    # Справочник цен — пустой файл из хранилища, а не загрузка поставщика (AI-GW-13).
     pricing_url = cfg["framework"]["pricing"]["pricing_url"]
     assert pricing_url.startswith("file:///nix/store/"), pricing_url
-    sheet = json.loads(machine.succeed(f"cat {pricing_url[len('file://'):]}"))
-    assert sheet["deepseek/model-cheap"]["input_cost_per_token"] == 3.0, sheet
-
-    # --- AI-GW-6, ADR-49: бюджет расходуется по ценам из политики и закрывается (402).
-    # Учёт у шлюза асинхронный — запросов до отказа может пройти больше двух.
-    codes = []
-    for _ in range(20):
-        code, body = ask("cost-autonomous", key("pricetest-online"))
-        codes.append(code)
-        if code != 200:
-            break
-        machine.sleep(1)
-    assert codes[0] == 200 and codes[-1] == 402, f"бюджет по ценам из политики: {codes} {body}"
-    assert "budget" in body.lower(), body
-    denied("cost-autonomous", key("pricetest-online"), "исчерпанный бюджет (402)")
+    assert json.loads(machine.succeed(f"cat {pricing_url[len('file://'):]}")) == {}
 
     # --- MCP-шлюз (AI-GW-14): ключ видит только разрешённые ему инструменты.
     def mcp(method, token, params=None):
@@ -673,7 +517,7 @@ pkgs.testers.runNixOSTest {
     machine.succeed("systemctl restart llm-gateway-alice.service")
     machine.wait_for_open_port(PORT)
     assert before == {n: key(n) for n in ["dsh-online", "localonly-offline"]}, "ключи не должны меняться"
-    code, _ = ask("native-small", key("dsh-online"))
+    code, _ = ask("local-chat", key("dsh-online"))
     assert code == 200
 
     # --- Остановка убирает публикацию ключей.

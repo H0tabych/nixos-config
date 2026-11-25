@@ -338,13 +338,15 @@ pkgs.testers.runNixOSTest {
     assert "alive" in sandbox_out("socat - UNIX-CONNECT:/run/user/2000/wayland-0", "--wayland", env=WL), (
         "AI-SBX-15: сокет Wayland должен отвечать изнутри"
     )
-    assert "wayland-0" in sandbox_out("echo $WAYLAND_DISPLAY", "--wayland", env=WL)
+    assert "wayland-0" in sandbox_out("printenv WAYLAND_DISPLAY", "--wayland", env=WL)
     for hidden in ["fixture-bus", "ssh-agent"]:
         status, _ = machine.execute(sandbox(f"test -e /run/user/2000/{hidden}", "--wayland", env=WL))
         assert status != 0, f"AI-SBX-15: --wayland не открывает /run/user/2000/{hidden}"
     # Сокета нет — опция молча ничего не делает, переменных Wayland нет.
-    out = sandbox_out("echo [$WAYLAND_DISPLAY]", "--wayland", env="env WAYLAND_DISPLAY=absent XDG_RUNTIME_DIR=/nonexistent")
-    assert "[]" in out, "AI-SBX-15: без сокета WAYLAND_DISPLAY не задаётся"
+    status, _ = machine.execute(
+        sandbox("printenv WAYLAND_DISPLAY", "--wayland", env="env WAYLAND_DISPLAY=absent XDG_RUNTIME_DIR=/nonexistent")
+    )
+    assert status != 0, "AI-SBX-15: без сокета WAYLAND_DISPLAY не задаётся"
 
     # === AI-SBX-12: --home-rw (роль claude). Урезанный набор AI-A7 ============
     HRW = "--home-rw"
@@ -393,22 +395,22 @@ pkgs.testers.runNixOSTest {
     # === Политика Nix для dsh (R9.14, R9.18): поиск, телеметрия, менеджер плагинов ==
     text = machine.succeed("cat /etc/dsh-policy.yml")
     for plugin in [
-        "web-search-deepseek",
-        "web-deepseek-api",
         "plugin-manager",
         "tool-plugin-manager",
         "ui-plugin-manager",
         "entry-customization",  # зависит от pluginNavigation ui-plugin-manager (иначе UI не грузится)
     ]:
         assert f"- id: {plugin}\n  disabled: true" in text, f"dsh: {plugin} должен быть выключен"
+    # Родной поиск и загрузка страниц DeepSeek работают (ADR-051): ключ — провайдера, не шлюза.
+    for plugin in ["web-search-deepseek", "web-deepseek-api", "tool-web"]:
+        assert f"- id: {plugin}" not in text, f"dsh: {plugin} не должен быть выключен"
     for plugin, cfg in [
-        ("tool-web", "search: false"),
         ("session-telemetry-otel", "mode: DISABLED"),
         ("session-log-deepseek", "enabled: false"),
         ("plugin-package-inventory-deepseek", "enabled: false"),
     ]:
         assert f"- id: {plugin}\n  config:\n    {cfg}" in text, f"dsh: {plugin} — {cfg}"
-    # Подключение и модель в политике не задаются (AI-ROLE-5): только окружение и интерфейс.
+    # Подключение и модель в политике не задаются: только окружение и интерфейс (ADR-051).
     assert "baseURL" not in text and "agent-default-model" not in text and "@GATEWAY_URL@" not in text
 
     # === AI-SBX-7, AI-A12 (ADR-44, R9.15): работа на месте ====================

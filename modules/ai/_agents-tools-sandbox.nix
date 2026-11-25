@@ -94,10 +94,7 @@ pkgs.writeShellApplication {
           home_rw=1
           shift
           ;;
-        --wayland)
-          wayland=1
-          shift
-          ;;
+        --wayland) wayland=1; shift ;;
         --device)
           case "$2" in kvm | dri) devices+=("$2") ;; *) usage ;; esac
           shift 2
@@ -138,26 +135,25 @@ pkgs.writeShellApplication {
       "NIX_REMOTE=daemon"
     )
     [ -n "''${LANG:-}" ] && env_args+=("LANG=$LANG")
-    # AI-SBX-15 (ADR-053): сокет Wayland-сессии пользователя — окно браузера агента. Имя —
-    # `WAYLAND_DISPLAY`, иначе первый сокет `wayland-*`; сокета нет (ВМ, сеанс без Wayland) —
-    # опция молча ничего не делает, браузер агента уходит в режим без окна.
-    wayland_src="" wl_name=""
-    if [ "$wayland" -eq 1 ]; then
-      host_rt=''${XDG_RUNTIME_DIR:-/run/user/$uid}
-      wl_name=''${WAYLAND_DISPLAY:-}
-      if [ -z "$wl_name" ] || [ ! -S "$host_rt/$wl_name" ]; then
-        wl_name=""
-        for c in "$host_rt"/wayland-*; do
-          [ -S "$c" ] && wl_name=''${c##*/} && break
-        done
+      # AI-SBX-15 (ADR-053): сокет Wayland-сессии пользователя — окно браузера агента. Имя —
+      # `WAYLAND_DISPLAY`, иначе первый сокет `wayland-*`; сокета нет (ВМ, сеанс без Wayland) —
+      # опция молча ничего не делает, браузер агента уходит в режим без окна.
+      wayland_src="" wl_name=""
+      if [ "$wayland" -eq 1 ]; then
+        host_rt=''${XDG_RUNTIME_DIR:-/run/user/$uid}
+        wl_name=''${WAYLAND_DISPLAY:-}
+        if [ -z "$wl_name" ] || [ ! -S "$host_rt/$wl_name" ]; then
+          wl_name=""
+          for c in "$host_rt"/wayland-*; do
+            [ -S "$c" ] && wl_name=''${c##*/} && break
+          done
+        fi
+        case "$wl_name" in */*) wl_name="" ;; esac
+        if [ -n "$wl_name" ] && [ -S "$host_rt/$wl_name" ]; then
+          wayland_src="$host_rt/$wl_name"
+          env_args+=("WAYLAND_DISPLAY=$wl_name" "XDG_SESSION_TYPE=wayland")
+        fi
       fi
-      case "$wl_name" in */*) wl_name="" ;; esac
-      if [ -n "$wl_name" ] && [ -S "$host_rt/$wl_name" ]; then
-        wayland_src="$host_rt/$wl_name"
-        env_args+=("WAYLAND_DISPLAY=$wl_name" "XDG_SESSION_TYPE=wayland")
-      fi
-    fi
-
     # Прокси-переменные есть только в M1 (NET-10), в M2 их нет; `all_proxy` (SOCKS) не передаём.
     for v in http_proxy HTTP_PROXY https_proxy HTTPS_PROXY no_proxy NO_PROXY; do
       [ -n "''${!v:-}" ] && env_args+=("$v=''${!v}")
@@ -186,43 +182,6 @@ pkgs.writeShellApplication {
       exit 1
     }
     mkdir -p "$state_dir/cache" "$state_dir/state" "$state_dir/data"
-
-    no_project=0
-    if [ "$project_dir" = "-" ]; then
-      # Без проекта песочница имеет смысл только с домашним каталогом (AI-SBX-12, AI-SBX-13).
-      [ "$home_rw" -eq 1 ] || usage
-      no_project=1
-    else
-      # project-dir не создаём: несуществующий путь — ошибка вызывающего (AI-SBX-6).
-      # AI-SBX-2, fail-closed: `--bind project_dir` идёт ПОСЛЕ `--tmpfs real_home`,
-      # поэтому $HOME (или его предок) в роли project_dir вернул бы агенту настоящий
-      # $HOME на запись (ПРОВЕРЕНО: читался ~/.ssh/). `/` запрещён всегда; в
-      # --home-rw $HOME открыт намеренно.
-      project_real=$(realpath -- "$project_dir")
-      home_real=$(realpath -- "$real_home")
-      if [ "$project_real" = "/" ] || { [ "$home_rw" -eq 0 ] && {
-        [ "$project_real" = "$home_real" ] ||
-          case "$home_real" in "$project_real"/*) true ;; *) false ;; esac
-      }; }; then
-        echo "agents-sandbox-exec: project-dir ($project_real) — домашний каталог, его предок или корень;" >&2
-        echo "  запуск запрещён (AI-SBX-2: это открыло бы агенту секреты и ключи)." >&2
-        echo "  Перейдите в каталог конкретного проекта и повторите." >&2
-        exit 1
-      fi
-
-      # --cwd обязан лежать внутри project-dir (иначе chdir вывел бы в пустой tmpfs).
-      cwd_real="$project_real"
-      if [ -n "$cwd_arg" ]; then
-        cwd_real=$(realpath -- "$cwd_arg")
-        case "$cwd_real" in
-          "$project_real" | "$project_real"/*) ;;
-          *)
-            echo "agents-sandbox-exec: --cwd ($cwd_real) вне project-dir ($project_real)" >&2
-            exit 1
-            ;;
-        esac
-      fi
-    fi
 
     # Голый корень bwrap — tmpfs; ниже — перечень разрешённого (AI-SBX-1).
     bwrap_args=(

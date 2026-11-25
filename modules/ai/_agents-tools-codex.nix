@@ -37,7 +37,7 @@
 { lib, codexCode }:
 {
   name = "codex";
-  subscription = true; # по подписке, мимо шлюза (AI-GW-11); в offline не запускается (AI-SBX-5)
+  cloudOnly = true; # по подписке, мимо шлюза (AI-GW-11); в offline не запускается (AI-SBX-5)
   gatewayKey = true; # ключ `codex-online` — только для MCP-инструментов (AI-GW-14)
 
   shell = ''

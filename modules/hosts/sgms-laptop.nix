@@ -98,76 +98,29 @@ in
       keepAlive = "5m";
     };
 
-    # Шлюз v2 (ADR-45, R9.16): прямой провайдер с нейтральным id (SEC-3); секрет —
-    # `ai.gateway.providerKey.primary` в secrets/users/<user>.yaml.
-    # Идентификаторы моделей — ПРОВЕРИТЬ по каталогу провайдера (api-docs.deepseek.com)
-    # перед первым запросом; `nativeModels` — явный перечень для сквозного маршрута
-    # (AI-ROLE-5), им пользуется dsh (R9.18).
-    my.ai.gateway.providers.primary = {
-      type = "deepseek";
-      nativeModels = [
-        "deepseek-flash"
-        "deepseek-v4-pro"
-      ];
-      # Цены для стоимости в журнале шлюза (ADR-49), USD за 1M токенов; сверены 2026-11-14
-      # по api-docs.deepseek.com/quick_start/pricing. У DeepSeek два тарифа: пик — 01–04 и
-      # 06–10 UTC по будням (09–13 и 04–07 МСК), остальное время и выходные — вдвое дешевле.
-      # Шлюз часов не различает (D24), поэтому взят тариф вне пика: на нём 93 % работы владельца
-      # (журналы dsh 2026-11-06…13: $5.00 по нему против $5.19 списанных). Погрешность: запрос в
-      # пиковые часы учитывается вдвое дешевле. Жёсткий предел — предоплата у провайдера.
-      prices = {
-        deepseek-flash = {
-          input = 0.15;
-          cacheRead = 0.003;
-          output = 0.6;
-        };
-        deepseek-v4-pro = {
-          input = 0.66;
-          cacheRead = 0.022;
-          output = 1.98;
-        };
-      };
-    };
+    # dsh ходит к провайдеру напрямую, в родном протоколе агента (ADR-051): ключ провайдера —
+    # секрет из sops пользователя, фича agents-keys отдаёт его лаунчеру файлом 0400. Имя ключа в
+    # sops прежнее (`ai.gateway.providerKey.primary`): переименовать в `ai.agents.dsh.apiKey` —
+    # `just sops-edit` и правка строки ниже (делает человек).
+    my.ai.agentKeys.dsh.sopsKey = "ai.gateway.providerKey.primary";
 
-    my.ai.gateway.cloudRoles = {
-      cost-autonomous = {
-        provider = "primary";
-        model = "deepseek-flash";
-      };
-      strong-autonomous = {
-        provider = "primary";
-        model = "deepseek-v4-pro";
-      };
-    };
-
-    # AI-GW-6: лимита шлюза нет (решение владельца 2026-11-14: расход DeepSeek владелец
-    # контролирует сам, у провайдера — предоплата). Цены выше дают точную стоимость в журнале
-    # шлюза; лимит вернуть — `my.ai.gateway.budget.maxUSD` (docs/runbook/ai.md, «Бюджет шлюза»).
-
-    # Матрица ключей доступа (AI-GW-4): на агента — ключи `-online` и `-offline`.
-    # claude ходит по подписке мимо шлюза (AI-GW-11) и ключа не имеет.
+    # Шлюз: MCP-вход агентов (AI-GW-14) и локальные роли (AI-GW-2). Облачных провайдеров, ролей и
+    # цен в нём нет (ADR-051): модель выбирает владелец в интерфейсе агента, агент ходит к ней в
+    # родном протоколе (dsh — на DeepSeek напрямую, claude и codex — по подписке).
+    # Матрица ключей доступа (AI-GW-4): на агента — ключи `-online` и `-offline`; ключ нужен для
+    # инструментов MCP-шлюза, `offline` инструментов не получает.
     my.ai.gateway.agents = {
-      dsh = {
-        cloudRoles = [
-          "cost-autonomous"
-          "strong-autonomous"
-        ];
-        nativeProvider = "primary";
-        # Те же инструменты, что у claude (AI-A16): плагин `dsh-mcp-client`, вход `gateway` из
-        # списка dotfiles; доступ — ключом `dsh-online`.
-        mcp = [
-          "jira"
-          "web-search"
-        ];
-      };
-      # Агент по подписке (AI-GW-11): ключ шлюза нужен только для инструментов MCP-шлюза
-      # (AI-GW-14); модель шлюз ему не отдаёт — ролей нет.
+      # Те же инструменты у всех трёх агентов (AI-A16): claude — плагин `ai-tools`, dsh — плагин
+      # `dsh-mcp-client`, codex — переопределения конфигурации; вход `gateway`, доступ — ключом
+      # `<агент>-online`.
+      dsh.mcp = [
+        "jira"
+        "web-search"
+      ];
       claude.mcp = [
         "jira"
         "web-search"
       ];
-      # Подписочный агент второго вендора (AI-AGT-1): модель — по подписке мимо шлюза,
-      # ключ `codex-online` — только для инструментов MCP-шлюза (AI-GW-14).
       codex.mcp = [
         "jira"
         "web-search"

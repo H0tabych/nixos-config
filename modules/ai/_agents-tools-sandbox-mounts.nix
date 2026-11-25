@@ -9,6 +9,45 @@
 # Порядок привязок значим (позднее перекрывает раннее): проект, состояние, `.direnv`
 # роли, база direnv, затем защита git.
 ''
+  # Проект: корень git-дерева на запись; $HOME (или его предок) и `/` в роли проекта — отказ (AI-SBX-2, 6).
+  no_project=0
+  if [ "$project_dir" = "-" ]; then
+    # Без проекта песочница имеет смысл только с домашним каталогом (AI-SBX-12, AI-SBX-13).
+    [ "$home_rw" -eq 1 ] || usage
+    no_project=1
+  else
+    # project-dir не создаём: несуществующий путь — ошибка вызывающего (AI-SBX-6).
+    # AI-SBX-2, fail-closed: `--bind project_dir` идёт ПОСЛЕ `--tmpfs real_home`,
+    # поэтому $HOME (или его предок) в роли project_dir вернул бы агенту настоящий
+    # $HOME на запись (ПРОВЕРЕНО: читался ~/.ssh/). `/` запрещён всегда; в
+    # --home-rw $HOME открыт намеренно.
+    project_real=$(realpath -- "$project_dir")
+    home_real=$(realpath -- "$real_home")
+    if [ "$project_real" = "/" ] || { [ "$home_rw" -eq 0 ] && {
+      [ "$project_real" = "$home_real" ] ||
+        case "$home_real" in "$project_real"/*) true ;; *) false ;; esac
+    }; }; then
+      echo "agents-sandbox-exec: project-dir ($project_real) — домашний каталог, его предок или корень;" >&2
+      echo "  запуск запрещён (AI-SBX-2: это открыло бы агенту секреты и ключи)." >&2
+      echo "  Перейдите в каталог конкретного проекта и повторите." >&2
+      exit 1
+    fi
+
+    # --cwd обязан лежать внутри project-dir (иначе chdir вывел бы в пустой tmpfs).
+    cwd_real="$project_real"
+    if [ -n "$cwd_arg" ]; then
+      cwd_real=$(realpath -- "$cwd_arg")
+      case "$cwd_real" in
+        "$project_real" | "$project_real"/*) ;;
+        *)
+          echo "agents-sandbox-exec: --cwd ($cwd_real) вне project-dir ($project_real)" >&2
+          exit 1
+          ;;
+      esac
+    fi
+  fi
+
+
   # AI-SBX-14: узлы устройств хоста из белого списка — после `--dev /dev` (иначе он их затрёт);
   # узла на хосте нет — пропуск.
   for d in ''${devices[@]+"''${devices[@]}"}; do

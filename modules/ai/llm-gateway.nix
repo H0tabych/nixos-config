@@ -1,25 +1,24 @@
 # Фича: llm-gateway · Слот: — · Домен: ai · Классы: N · Для: пользователей с capability ml
 # Контракт: AI_SUBSYSTEM.md §3.3 (AI-GW-1…14), раздел 4 (роли), ADR-45, SEC-4/SEC-7.
 # Системная служба шлюза на КАЖДОГО пользователя с capability `ml` (пересечение
-# config.my.host.users ∩ capabilities, по образцу modules/base/users.nix): секреты
-# провайдеров у root, ключи доступа по паре «агент × режим» генерирует служба,
-# пользователь читает лишь файлы своих ключей (_llm-gateway-service.nix). Порт —
-# portBase + (uid − 1000), uid явный (фича users, AI-GW-1).
+# config.my.host.users ∩ capabilities, по образцу modules/base/users.nix): ключи доступа по паре
+# «агент × режим» генерирует служба, пользователь читает лишь файлы своих ключей
+# (_llm-gateway-service.nix). Порт — portBase + (uid − 1000), uid явный (фича users, AI-GW-1).
+# Шлюз — MCP-вход агентов (AI-GW-14) и локальные роли инференса (AI-GW-2); облачных провайдеров и
+# посредничества между агентом и его моделью в нём нет (ADR-051): агенты ходят к моделям сами, в
+# родных протоколах.
 # Реализация — Bifrost (_llm-gateway-package.nix, Приложение P.1 AI_SUBSYSTEM.md);
-# политика хоста → шаблон конфига: _llm-gateway-config.nix. Цены для учёта расходов и бюджетов
-# (AI-GW-6, ADR-49) — тоже из политики хоста (`providers.<id>.prices` → _llm-gateway-pricing.nix),
-# справочник цен поставщика шлюза не скачивается (D24: в нём пиковый тариф, счёт был вдвое выше).
+# политика хоста → шаблон конфига: _llm-gateway-config.nix. Справочник цен моделей Bifrost —
+# пустой файл из хранилища: с сайта поставщика шлюз его не качает (AI-GW-13).
 # AI-CMP-4: машинный слой пользователя получает только URL и КАТАЛОГ с файлами
 # ключей — значений там нет (SEC-4/A3); файл пишется из этого nixos-модуля через
 # home-manager.users (прецедент — modules/base/users.nix), поэтому HM-части у фичи нет.
-# Секреты в sops пользователя: `ai.gateway.providerKey.<id>` — по нейтральному id
-# провайдера (SEC-3). Ключи доступа и учётные данные management-API в sops не хранятся.
 # AI-GW-10 (запуск по требованию) не реализован — см. _llm-gateway-service.nix.
 # MCP-шлюз (AI-GW-14, R9.23): серверы с секретом и удалённые — `my.ai.gateway.mcp` (политика
 # хоста), права ключей — `my.ai.gateway.agents.<агент>.mcp` (только `online`); определения —
 # _llm-gateway-mcp.nix. Секрет сервера — `ai.gateway.mcpToken.<id>` в sops пользователя.
 # Зависимости: ai-facts (my.ai.*), host-facts (my.host.users), users
-# (my.users.*.capabilities), tunnel-facts (my.tunnel.*) — только чтение my.*, не импорт (ARCH-3).
+# (my.users.*.capabilities) — только чтение my.*, не импорт (ARCH-3).
 { config, lib, ... }:
 let
   outer = config;
@@ -27,25 +26,11 @@ let
   buildConfig = import ./_llm-gateway-config.nix { inherit lib; };
   mcpNeutralId = lib.match "[a-z][a-z0-9-]*"; # имя клиента MCP не начинается с цифры (Bifrost)
 
-  knownTypes = [
-    "openai"
-    "anthropic"
-    "bedrock"
-    "cohere"
-    "azure"
-    "vertex"
-    "mistral"
-    "groq"
-    "gemini"
-    "deepseek"
-    "cerebras"
-    "perplexity"
-  ];
-  neutralId = lib.match "[a-z0-9][a-z0-9-]*";
   modes = [
     "online"
     "offline"
   ];
+  neutralId = lib.match "[a-z0-9][a-z0-9-]*";
 in
 {
   flake.modules.nixos.llm-gateway =
@@ -59,40 +44,15 @@ in
         inherit (gw) agents;
       };
       keyIds = lib.concatMap (a: map (m: "${a}-${m}") modes) (lib.attrNames gw.agents);
-      providerIds = lib.attrNames gw.providers;
-      allNative = lib.concatMap (p: p.nativeModels) (lib.attrValues gw.providers);
       unitOf = user: "llm-gateway-${user}";
-      # NET-10: в M1 системная служба не получает переменных прокси сессии —
-      # адрес берётся из единственного места, my.tunnel.local.http. В M2 трафик
-      # идёт через туннель прозрачно.
-      proxyUrl = lib.optionalString (
-        config.my.tunnel.mode == "m1"
-      ) "http://${config.my.tunnel.local.http.address}:${toString config.my.tunnel.local.http.port}";
-      pricingFile = pkgs.writeText "llm-gateway-pricing.json" (
-        builtins.toJSON (import ./_llm-gateway-pricing.nix { inherit lib; } { inherit (gw) providers; })
-      );
-      # Облачные модели (роли и сквозной маршрут) — каждой нужна цена, иначе бюджет её не считает.
-      cloudModels =
-        map (r: "${r.provider}/${r.model}") (lib.attrValues gw.cloudRoles)
-        ++ lib.concatLists (lib.mapAttrsToList (id: p: map (m: "${id}/${m}") p.nativeModels) gw.providers);
-      unpriced = lib.filter (
-        pm:
-        let
-          id = lib.head (lib.splitString "/" pm);
-        in
-        lib.attrByPath [ id "prices" (lib.removePrefix "${id}/" pm) ] null gw.providers == null
-      ) (lib.unique cloudModels);
+      # Справочник цен моделей Bifrost — пустой: цены и бюджеты шлюзу не нужны (ADR-051), а
+      # загрузка справочника с сайта поставщика запрещена (AI-GW-13).
+      pricingFile = pkgs.writeText "llm-gateway-pricing.json" "{}";
       template = buildConfig {
-        inherit (gw)
-          providers
-          agents
-          budget
-          cloudRoles
-          ;
+        inherit (gw) agents;
         inherit (config.my.ai) inference;
         localRoles = config.my.ai.local;
         mcp = mcpBuild;
-        proxyUrl = if proxyUrl == "" then null else proxyUrl;
         pricingUrl = "file://${pricingFile}";
       };
       # Источник секрета сервера MCP-шлюза: файл в домашнем каталоге пользователя (решение
@@ -121,41 +81,16 @@ in
             template
             keyIds
             ;
-          inherit (gw) providers;
           group = config.users.users.${user}.group;
           port = gw.portBase + (config.users.users.${user}.uid - 1000);
-          credPath = id: config.sops.secrets."ai.gateway.providerKey.${id}.${user}".path;
           mcpSecrets = mcpSrc user;
         };
     in
     {
       assertions = [
         {
-          assertion = lib.all (p: lib.elem p.type knownTypes) (lib.attrValues gw.providers);
-          message = "my.ai.gateway.providers.*.type должен быть прямым провайдером из списка Bifrost (агрегаторы отклонены, ADR-45; Приложение P.1 AI_SUBSYSTEM.md).";
-        }
-        {
-          assertion =
-            lib.length (lib.unique (map (p: p.type) (lib.attrValues gw.providers))) == lib.length providerIds;
-          message = "my.ai.gateway.providers: тип провайдера у каждого id уникален — в конфиге шлюза провайдер называется по типу (_llm-gateway-config.nix).";
-        }
-        {
-          assertion = lib.all (id: neutralId id != null) (providerIds ++ keyIds);
-          message = "my.ai.gateway: id провайдеров и агентов — [a-z0-9-], без имён вендоров (SEC-3).";
-        }
-        {
-          assertion = lib.all (r: gw.providers ? ${r.provider}) (lib.attrValues gw.cloudRoles);
-          message = "my.ai.gateway.cloudRoles.*.provider должен быть id из my.ai.gateway.providers.";
-        }
-        {
-          assertion = lib.all (a: a.nativeProvider == null || gw.providers ? ${a.nativeProvider}) (
-            lib.attrValues gw.agents
-          );
-          message = "my.ai.gateway.agents.*.nativeProvider должен быть id из my.ai.gateway.providers.";
-        }
-        {
-          assertion = lib.all (m: !(gw.cloudRoles ? ${m} || config.my.ai.local ? ${m})) allNative;
-          message = "my.ai.gateway.providers.*.nativeModels не должны совпадать с именами ролей (сквозной маршрут и роли различаются по имени модели).";
+          assertion = lib.all (id: neutralId id != null) keyIds;
+          message = "my.ai.gateway.agents: имена агентов — [a-z0-9-], без имён вендоров (SEC-3).";
         }
         {
           assertion = lib.all (id: mcpNeutralId id != null) (lib.attrNames gw.mcp);
@@ -172,30 +107,10 @@ in
           assertion = lib.all (a: lib.all (id: gw.mcp ? ${id}) a.mcp) (lib.attrValues gw.agents);
           message = "my.ai.gateway.agents.*.mcp должен перечислять id из my.ai.gateway.mcp.";
         }
-        {
-          # Цена нужна там, где по ней считается лимит; без лимита — только журнал стоимости.
-          assertion = gw.budget.maxUSD == null || unpriced == [ ];
-          message =
-            "my.ai.gateway.providers.<id>.prices: нет цены у облачных моделей (AI-GW-6, ADR-49) — "
-            + "лимит их не считал бы: ${lib.concatStringsSep ", " unpriced}";
-        }
       ];
 
       sops.secrets = lib.listToAttrs (
         lib.concatMap (
-          user:
-          map (
-            id:
-            lib.nameValuePair "ai.gateway.providerKey.${id}.${user}" {
-              key = "ai.gateway.providerKey.${id}";
-              sopsFile = secretsFile "users/${user}.yaml";
-              owner = "root";
-              mode = "0400";
-              restartUnits = [ "${unitOf user}.service" ];
-            }
-          ) providerIds
-        ) mlUsers
-        ++ lib.concatMap (
           user:
           map (
             s:

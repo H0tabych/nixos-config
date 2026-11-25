@@ -1,7 +1,16 @@
 # Приватная часть: agents-tools · Владелец: modules/ai/agents-tools.nix (STR-6)
-# Адаптер альтернативного агента — DeepSeek Harness, `dsh` (AI-AGT-9, AI-ROLE-5, ADR-47).
+# Адаптер альтернативного агента — DeepSeek Harness, `dsh` (AI-AGT-9, ADR-47, ADR-051).
 # Контракт фрагмента `shell` — как у адаптера claude. Дополнительно лаунчер даёт
-# `gw_key` (ключ шлюза значением, пусто — шлюза нет, AI-GW-9) и `$AI_GATEWAY_URL`.
+# `gw_key` (ключ шлюза значением, пусто — шлюза нет, AI-GW-9; нужен только инструментам MCP-шлюза)
+# и `$AI_GATEWAY_URL`.
+#
+# Модель — напрямую у провайдера, в родном протоколе агента (ADR-051): dsh говорит на Anthropic
+# Messages и ходит на `https://api.deepseek.com/anthropic` (`DEEPSEEK_BASE_URL` не задаём — это
+# умолчание адаптера `llm-deepseek`). Посредник-шлюз стоял между ними преобразователем форматов
+# (Messages → внутренняя схема → OpenAI chat-endpoint) и молча выключал рассуждение; убран.
+# Ключ провайдера — файл из sops (фича `agents-keys`, путь в `AI_AGENT_KEYFILE_DSH`), лаунчер
+# читает его снаружи песочницы и отдаёт значением в `DEEPSEEK_API_KEY` (AI-SBX-3). Модель и
+# `reasoningEffort` выбирает владелец в интерфейсе dsh: хост за него не решает.
 #
 # Режимы (AI-AGT-1) — штатная переменная `DSH_PERMISSION_MODE` (ПРОВЕРЕНО
 # `dsh --dump-config`, 0.2.1-rc.3: она выбирает песочницу и политику одобрений профиля):
@@ -17,7 +26,9 @@
 }:
 {
   name = "dsh";
-  subscription = false;
+  # Ходит к модели только через облако: в `offline` не запускается (AI-SBX-5). Ключ шлюза —
+  # только для инструментов MCP-шлюза (AI-GW-14), как у claude.
+  cloudOnly = true;
   gatewayKey = true;
 
   shell = ''
@@ -39,17 +50,20 @@
     else
       extra_env+=(--env "DSH_PERMISSION_MODE=danger-full-access")
     fi
-    # Нативное подключение (AI-ROLE-5, R9.18): шлюз — корень Messages-совместимого API
-    # (`DEEPSEEK_BASE_URL`, dsh добавляет `/v1/messages`), ключ доступа — `DEEPSEEK_API_KEY`
-    # значением. Модели — собственные модели провайдера из каталога интерфейса; шлюз
-    # маршрутизирует их по `nativeModels`, не подменяя. Без ключа и без шлюза — отказ
-    # самого dsh («MISSING_CREDENTIAL», ПРОВЕРЕНО).
-    if [ -n "''${AI_GATEWAY_URL:-}" ] && [ -n "$gw_key" ]; then
-      export DEEPSEEK_API_KEY="$gw_key"
+    # Подключение к провайдеру (ADR-051): ключ — значением из файла agents-keys; адрес —
+    # умолчание dsh (`api.deepseek.com/anthropic`). Без ключа — отказ самого dsh
+    # («MISSING_CREDENTIAL», ПРОВЕРЕНО), лаунчер предупреждает заранее.
+    key_file=''${AI_AGENT_KEYFILE_DSH:-}
+    if [ -n "$key_file" ] && [ -r "$key_file" ]; then
+      DEEPSEEK_API_KEY=$(cat "$key_file")
+      export DEEPSEEK_API_KEY
       sandbox_opts+=(--pass-env DEEPSEEK_API_KEY)
-      extra_env+=(--env "DEEPSEEK_BASE_URL=$AI_GATEWAY_URL/anthropic")
-      # Вход MCP-шлюза (AI-GW-14, R9.23): тот же ключ доступа, значением в окружении; права на
-      # инструменты — у ключа `dsh-online` (`offline` инструментов не получает).
+    else
+      echo "agent-launcher: dsh: нет файла ключа провайдера (AI_AGENT_KEYFILE_DSH, фича agents-keys)" >&2
+    fi
+    # Вход MCP-шлюза (AI-GW-14, R9.23): ключ шлюза значением в окружении; права на инструменты —
+    # у ключа `dsh-online` (`offline` инструментов не получает).
+    if [ -n "''${AI_GATEWAY_URL:-}" ] && [ -n "$gw_key" ]; then
       export AI_MCP_KEY="$gw_key"
       sandbox_opts+=(--pass-env AI_MCP_KEY)
       extra_env+=(--env "AI_MCP_URL=$AI_GATEWAY_URL/mcp")

@@ -1,7 +1,7 @@
 # Приватная часть: agents-tools · Владелец: modules/ai/agents-tools.nix (STR-6)
 # Лаунчер агентов (AI-AGT-4: единственный способ запуска). Отделён от фичи по границе
 # контракта (STR-5). Лаунчер общий и конкретных агентов не знает (AI-AGT-9): всё про
-# агента — в адаптере (`adapters`, _agents-tools-<агент>.nix): имя, признак подписки,
+# агента — в адаптере (`adapters`, _agents-tools-<агент>.nix): имя, признак «только облако» (`cloudOnly`),
 # нужен ли ключ шлюза и фрагмент bash, который заполняет `bin`, `extra_env`,
 # `extra_bin_args` (перед аргументами пользователя), `tail_args` (после них), `sandbox_opts`, `publish`, `project_files` (строки «glob|причина» — файлы агента в проекте, AI-AGT-9). Песочницу даёт владелец (`sandboxExec`).
 # Адаптер с `longLived` (AI-SBX-13, ADR-48) работает в долгоживущей песочнице: лаунчер её
@@ -21,7 +21,7 @@ let
   names = a: lib.concatStringsSep " " (map (x: x.name) a);
   allNames = names adapters;
   usageList = lib.concatStringsSep "|" (map (a: a.name) adapters);
-  subscriptionNames = names (lib.filter (a: a.subscription) adapters);
+  cloudOnlyNames = names (lib.filter (a: a.cloudOnly) adapters);
   gatewayNames = names (lib.filter (a: a.gatewayKey) adapters);
   longLivedNames = names (lib.filter (a: a ? longLived) adapters);
   agentCases = lib.concatMapStrings (a: ''
@@ -44,7 +44,7 @@ pkgs.writeShellApplication {
   text = ''
     # Составы из адаптеров (AI-AGT-9), с пробелами по краям — для поиска по `*" имя "*`.
     all_agents=" ${allNames} "
-    subscription_agents=" ${subscriptionNames} "
+    cloud_only_agents=" ${cloudOnlyNames} "
     gateway_agents=" ${gatewayNames} "
     longlived_agents=" ${longLivedNames} "
 
@@ -89,10 +89,10 @@ pkgs.writeShellApplication {
     project_dir=$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")
     [ -n "$mode" ] || mode=$(agents-net mode "$project_dir")
     echo "agent-launcher: сеть $mode, режим $agent_mode" >&2
-    case "$subscription_agents" in
+    case "$cloud_only_agents" in
       *" $role "*)
         if [ "$mode" = offline ]; then
-          echo "agent-launcher: $role работает по подписке и в offline не запускается (AI-SBX-5)" >&2
+          echo "agent-launcher: $role ходит к модели только через облако и в offline не запускается (AI-SBX-5)" >&2
           exit 1
         fi
         ;;
@@ -123,6 +123,12 @@ pkgs.writeShellApplication {
     if [ -z "''${AI_GATEWAY_URL:-}" ] && [ -r "$HOME/.config/machine.d/ai-gateway-env" ]; then
       # shellcheck source=/dev/null  # файл машинного слоя, вне сборки
       . "$HOME/.config/machine.d/ai-gateway-env"
+    fi
+    # Пути файлов ключей провайдера для агентов, ходящих к нему напрямую (ADR-051, agents-keys):
+    # `AI_AGENT_KEYFILE_<АГЕНТ>`. Значение читает адаптер здесь же, снаружи песочницы.
+    if [ -r "$HOME/.config/machine.d/ai-agents-env" ]; then
+      # shellcheck source=/dev/null  # файл машинного слоя, вне сборки
+      . "$HOME/.config/machine.d/ai-agents-env"
     fi
 
     # Ключ доступа к шлюзу (AI-SBX-3, ADR-45): свой файл `<агент>-<режим сети>` в каталоге

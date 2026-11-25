@@ -54,6 +54,21 @@ let
       fi
     '';
 
+  # Пробный агент: ходит к шлюзу и ничем не ограничен по сети (в отличие от claude и dsh, которым
+  # нужно облако). Сетевые режимы проверяются на нём: offline, корни `cloud = "deny"`.
+  probeAdapter = {
+    name = "probe";
+    cloudOnly = false;
+    gatewayKey = true;
+    shell = ''
+      bin=${pkgs.lib.getExe (stub "probe")}
+      if [ -n "''${AI_GATEWAY_URL:-}" ] && [ -n "$gw_key" ]; then
+        export DEEPSEEK_API_KEY="$gw_key"
+        sandbox_opts+=(--pass-env DEEPSEEK_API_KEY)
+      fi
+    '';
+  };
+
   # Адаптеры настоящие (AI-AGT-9), пакеты агентов — заглушки.
   adapters = [
     (pkgs.callPackage ../modules/ai/_agents-tools-claude.nix { claudeCode = stub "claude"; })
@@ -62,6 +77,7 @@ let
       inherit dshPolicy;
       webPortBase = 11600;
     })
+    probeAdapter
   ];
   # Долгоживущая песочница (AI-SBX-13, ADR-48) — тот же `agents-host`, что у фичи.
   hostTool = pkgs.callPackage ../modules/ai/_agents-tools-host.nix {
@@ -192,8 +208,11 @@ pkgs.testers.runNixOSTest {
         f"'export AI_GATEWAY_KEYS_DIR=/run/llm-gateway/agent' > {HOME}/.config/machine.d/ai-gateway-env"
     )
     machine.succeed("install -d -m755 /run/llm-gateway /run/llm-gateway/agent")
-    for key in ["dsh-online", "dsh-offline", "claude-online", "claude-offline"]:
+    for key in ["dsh-online", "dsh-offline", "claude-online", "claude-offline", "probe-online", "probe-offline"]:
         machine.succeed(f"echo {key}-key > /run/llm-gateway/agent/{key} && chown agent:agent /run/llm-gateway/agent/{key}")
+    # Ключ провайдера для dsh (ADR-051, agents-keys): файл и его путь в машинном слое.
+    as_agent(f"echo dsh-provider-key > {HOME}/.dsh-provider-key && chmod 400 {HOME}/.dsh-provider-key")
+    as_agent(f"echo 'export AI_AGENT_KEYFILE_DSH={HOME}/.dsh-provider-key' > {HOME}/.config/machine.d/ai-agents-env")
     ROOTS = f"{HOME}/.config/ai/roots.toml"
     as_agent(f"printf '%s\n' '[[root]]' 'path = \"~/work\"' 'cloud = \"deny\"' > {ROOTS}")
     as_agent(f"touch {HOME}/other/marked/.ai/offline")
@@ -262,9 +281,9 @@ pkgs.testers.runNixOSTest {
     assert ctl["abstract"] == "OPEN", ctl
 
     # === online (по умолчанию): сеть как у пользователя ========================
-    out, r = probe_in("dsh", f"{HOME}/other/free")
+    out, r = probe_in("probe", f"{HOME}/other/free")
     assert "сеть online" in out, f"AI-SEC-6: по умолчанию online: {out}"
-    assert r["dskey"] == "dsh-online-key", "ключ шлюза — по сети online"
+    assert r["dskey"] == "probe-online-key", "ключ шлюза — по сети online"
     assert r["gateway"] == "gateway-ok", f"AI-A18: шлюз: {out}"
     assert r["db"] == "database-ok", f"AI-A18: loopback хоста (база данных на localhost): {out}"
     assert r["vpnip"] != "", f"AI-A18/D22: VPN-хост по адресу: {out}"
@@ -282,9 +301,9 @@ pkgs.testers.runNixOSTest {
     assert_clean()
 
     # === offline: шлюз, DNS и сети VPN; остальное, включая адреса хоста, закрыто ======
-    out, r = probe_in("dsh --offline", f"{HOME}/other/free")
+    out, r = probe_in("probe --offline", f"{HOME}/other/free")
     assert "сеть offline" in out, out
-    assert r["dskey"] == "dsh-offline-key", "ключ шлюза — по сети offline"
+    assert r["dskey"] == "probe-offline-key", "ключ шлюза — по сети offline"
     assert r["gateway"] == "gateway-ok", f"AI-A18: шлюз в offline доступен: {out}"
     assert r["vpnip"] != "" and r["vpnname"] != "", f"AI-A18: сети VPN и их DNS в offline доступны: {out}"
     for k in ["db", "sens", "inet", "hosttun", "hostwan"]:
@@ -294,20 +313,20 @@ pkgs.testers.runNixOSTest {
     assert_clean()
 
     # === Корни проекта (roots.toml): cloud = "deny" → offline; маркер проекта не действует ===
-    out, r = probe_in("dsh", f"{HOME}/work/p1")
+    out, r = probe_in("probe", f"{HOME}/work/p1")
     assert "сеть offline" in out and r["inet"] == "" and r["gateway"] == "gateway-ok", f"корень deny → offline: {out}"
-    out, r = probe_in("dsh", f"{HOME}/other/marked")
+    out, r = probe_in("probe", f"{HOME}/other/marked")
     assert "сеть online" in out and r["inet"] != "", f"AI-SEC-5: маркер .ai/offline в проекте ничего не меняет: {out}"
     status, out = launch("dsh --online", f"{HOME}/other/free")
     assert status != 0 and "--online больше нет" in out, out
     # Файл есть, но не разобран — отказ запуска, а не молчаливый online.
     as_agent(f"cp {ROOTS} {ROOTS}.ok && printf '%s\n' '[[root' > {ROOTS}")
-    machine.succeed(f"rm -f {HOME}/other/free/stub-started-dsh")
-    status, out = launch("dsh", f"{HOME}/other/free")
+    machine.succeed(f"rm -f {HOME}/other/free/stub-started-probe")
+    status, out = launch("probe", f"{HOME}/other/free")
     assert status != 0 and "не разобран" in out, f"roots.toml сломан — отказ: {out}"
-    machine.fail(f"test -e {HOME}/other/free/stub-started-dsh")
+    machine.fail(f"test -e {HOME}/other/free/stub-started-probe")
     as_agent(f"printf '%s\n' '[[root]]' 'cloud = \"maybe\"' 'path = \"~/x\"' > {ROOTS}")
-    status, out = launch("dsh", f"{HOME}/other/free")
+    status, out = launch("probe", f"{HOME}/other/free")
     assert status != 0 and "допустимо deny | allow" in out, out
     as_agent(f"mv {ROOTS}.ok {ROOTS}")
     # Файла нет совсем — облако разрешено по умолчанию.
@@ -414,13 +433,15 @@ pkgs.testers.runNixOSTest {
     out, r = probe_in("dsh", f"{HOME}/other/free")
     assert r["dsmode"] == "danger-full-access", f"dsh autonomous: граница — песочница лаунчера: {out}"
     out, r = probe_in("dsh --controlled", f"{HOME}/other/free")
-    assert r["dsmode"] == "workspace-write" and r["dskey"] == "dsh-online-key", out
-    out, r = probe_in("dsh --offline --controlled", f"{HOME}/other/free")
-    assert r["dsmode"] == "workspace-write" and r["dskey"] == "dsh-offline-key", out
-    assert "сеть offline, режим controlled" in out, out
+    assert r["dsmode"] == "workspace-write" and r["dskey"] == "dsh-provider-key", out
+    # dsh ходит к провайдеру напрямую (ADR-051): в offline не запускается, как claude.
+    machine.succeed(f"rm -f {HOME}/other/free/stub-started-dsh")
+    status, out = launch("dsh --offline --controlled", f"{HOME}/other/free")
+    assert status != 0 and "offline не запускается" in out, f"dsh в offline: отказ: {out}"
+    machine.fail(f"test -e {HOME}/other/free/stub-started-dsh")
     # Неизвестный агент (в том числе удалённый aider) — отказ с подсказкой.
     status, out = launch("aider", f"{HOME}/other/free")
-    assert status != 0 and "usage: agent-launcher <claude|dsh>" in out, out
+    assert status != 0 and "usage: agent-launcher <claude|dsh|probe>" in out, out
     assert_clean()
 
     # === Fail-closed (AI-SBX-6): не поднялась сеть агента — агент не стартует ===========
@@ -433,7 +454,7 @@ pkgs.testers.runNixOSTest {
     # Охранник сам по себе (без `agents-net run`) команду не запускает.
     machine.fail(outside("agents-net guard -- true"))
 
-    # === dsh нативно (R9.18, AI-ROLE-5): окружение, политика патчем, профили не пишутся ==
+    # === dsh нативно (R9.18, ADR-051): окружение, политика патчем, профили не пишутся ==
     DSH_PROFILES = f"{HOME}/.local/state/agents/dsh/dsh-home/profiles"
     # Общий список MCP (R9.23): патчи из dotfiles/ai/generated/dsh — локальные серверы всегда, вход
     # шлюза — когда у лаунчера есть адрес и ключ.
@@ -441,28 +462,31 @@ pkgs.testers.runNixOSTest {
     as_agent(f"mkdir -p {MCPD} && echo '[]' > {MCPD}/local.cordis.yml && echo '[]' > {MCPD}/gateway.cordis.yml")
     out, r = probe_in("dsh", f"{HOME}/other/free")
     assert "сеть online" in out, out
-    assert r["dskey"] == "dsh-online-key", f"ключ dsh — значением в окружении, по режиму online: {out}"
-    assert r["dsurl"] == "http://127.0.0.1:11501/anthropic", f"подключение окружением: {out}"
+    assert r["dskey"] == "dsh-provider-key", f"ключ провайдера — значением в окружении dsh: {out}"
+    assert r["dsurl"] == "", f"адрес провайдера — умолчание dsh, шлюз посредником не стоит (ADR-051): {out}"
     args = machine.succeed(f"cat {HOME}/other/free/stub-args-dsh")
     assert "--patch\n${dshPolicy}\n" in args, f"политика Nix — флагом --patch из хранилища: {args}"
-    assert "dsh-online-key" not in args, f"ключ не в argv: {args}"
+    assert "dsh-online-key" not in args and "dsh-provider-key" not in args, f"ключи не в argv: {args}"
     assert r["mcpkey"] == "dsh-online-key" and r["mcpurl"] == "http://127.0.0.1:11501/mcp", f"вход MCP-шлюза: {out}"
     assert r["lsplog"] == f"{HOME}/.local/state/agents/dsh/mcp-lsp.log", f"журнал MCP-серверов dsh в файл: {out}"
     assert f"--patch\n{MCPD}/local.cordis.yml\n" in args and f"--patch\n{MCPD}/gateway.cordis.yml\n" in args, args
     machine.fail(f"test -e {DSH_PROFILES}")  # профили лаунчер не пишет (D18)
-    out, r = probe_in("dsh --offline", f"{HOME}/other/free")
-    assert r["dskey"] == "dsh-offline-key", f"ключ dsh по режиму offline: {out}"
     status, out = launch("dsh -- 'сделай что-нибудь'", f"{HOME}/other/free")
     args = machine.succeed(f"cat {HOME}/other/free/stub-args-dsh")
     assert args.startswith("--profile\nheadless\n--patch\n${dshPolicy}\n"), args
-    # Без ключа шлюза окружение подключения не задаётся (AI-GW-9).
+    # Без ключа шлюза нет входа MCP-шлюза (AI-GW-9), модель — по-прежнему напрямую.
     machine.succeed("mv /run/llm-gateway/agent/dsh-online /run/llm-gateway/agent/dsh-online.off")
     out, r = probe_in("dsh", f"{HOME}/other/free")
-    assert r["dskey"] == "" and r["dsurl"] == "", f"без ключа окружение подключения пусто: {out}"
+    assert r["dskey"] == "dsh-provider-key", f"ключ провайдера не зависит от шлюза: {out}"
     assert r["mcpkey"] == "" and r["mcpurl"] == "", f"без ключа входа MCP-шлюза нет: {out}"
     args = machine.succeed(f"cat {HOME}/other/free/stub-args-dsh")
     assert "local.cordis.yml" in args and "gateway.cordis.yml" not in args, f"патч шлюза только при ключе: {args}"
     machine.succeed("mv /run/llm-gateway/agent/dsh-online.off /run/llm-gateway/agent/dsh-online")
+    # Нет файла ключа провайдера — предупреждение лаунчера, ключа в окружении нет.
+    as_agent(f"mv {HOME}/.dsh-provider-key {HOME}/.dsh-provider-key.off")
+    out, r = probe_in("dsh", f"{HOME}/other/free")
+    assert r["dskey"] == "" and "нет файла ключа провайдера" in out, f"без файла ключа: {out}"
+    as_agent(f"mv {HOME}/.dsh-provider-key.off {HOME}/.dsh-provider-key")
 
     # === dsh: веб-интерфейс внутри пространства сети открывается с хоста (публикация) ==
     as_agent(f"rm -f {HOME}/other/free/stub-started-dsh")

@@ -12,14 +12,14 @@
 | `secrets/hosts/sgms-laptop.yaml` | `tunnel.clientId` | `tunnel-xray` |
 | `secrets/hosts/sgms-laptop.yaml` | `tunnel.shortId` | `tunnel-xray` |
 | `secrets/hosts/sgms-laptop.yaml` | `vpnClient.credentials` | `vpn-client` |
-| `secrets/users/sgm.yaml` | `ai.gateway.providerKey.<id>` | `llm-gateway` |
+| `secrets/users/sgm.yaml` | `ai.gateway.providerKey.<id>` | `agents-keys` |
 
-`ai.gateway.providerKey.<id>` — по одной строке на каждого провайдера из
-`my.ai.gateway.providers` на хосте (ADR-45); `<id>` — нейтральный идентификатор
-(`primary`), не вендор (SEC-3). Секрет читает только root и отдаёт службе шлюза
-через LoadCredential. Ключ должен быть в файле ДО сборки: иначе активация
-sops-nix не пройдёт; пустое значение допустимо — провайдер отключается, юнит
-остаётся `active` (AI-A14/AI-GW-9). Ключи доступа к шлюзу и учётные данные его
+`ai.gateway.providerKey.<id>` — ключ провайдера моделей (ADR-051: шлюз облачных провайдеров
+больше не обслуживает); строку, на которую указывает `my.ai.agentKeys.<агент>.sopsKey` на хосте,
+фича `agents-keys` отдаёт пользователю файлом 0400 в `/run/secrets` (лаунчер читает его снаружи
+песочницы и передаёт агенту значением в окружение). Имя ключа историческое: переименовать в
+`ai.agents.<агент>.apiKey` через `just sops-edit` и поправить `sopsKey` на хосте можно в любой момент.
+Ключ должен быть в файле ДО сборки: иначе активация sops-nix не пройдёт. Ключи доступа к шлюзу и учётные данные его
 управляющего API (`ai.gateway.accessKey`, `ai.gateway.admin.*`, `ai.gateway.providerKey.<роль>`
 из схемы до R9.16) в sops больше не хранятся: их генерирует служба. Старые строки после
 проверки удалить (`just sops-edit`).
