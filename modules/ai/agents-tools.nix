@@ -1,10 +1,11 @@
 # Фича: agents-tools · Слот: — · Домен: ai · Классы: H · Для: пользователей с ml
 # Контракт: AI_SUBSYSTEM.md §3.4 (AI-AGT-1…9, «Лаунчер-песочница» AI-SBX-1…13).
-# Агентов два (AI-AGT-1, ADR-47): claude-code (тяжёлый, по подписке) и DeepSeek Harness
-# `dsh` (альтернативный — другое семейство моделей); «контролируемый» — режим `--controlled`
-# того же агента, а не отдельный продукт (`aider` удалён, R9.21). Всё знание о конкретном
-# агенте — в адаптере (AI-AGT-9): `_agents-tools-claude.nix`, `_agents-tools-dsh.nix`;
-# лаунчер (`_agents-tools-launcher.nix`) общий. claude-code в nixpkgs-26.05 отстаёт —
+# Агентов три (AI-AGT-1, ADR-47, ADR-52): claude-code (тяжёлый, по подписке), OpenAI Codex CLI
+# (по подписке, второй вендор) и DeepSeek Harness `dsh` (альтернативный — другое семейство
+# моделей); «контролируемый» — режим `--controlled` того же агента, а не отдельный продукт
+# (`aider` удалён, R9.21). Всё знание о конкретном агенте — в адаптере (AI-AGT-9):
+# `_agents-tools-claude.nix`, `_agents-tools-codex.nix`, `_agents-tools-dsh.nix`; лаунчер
+# (`_agents-tools-launcher.nix`) общий. claude-code в nixpkgs-26.05 отстаёт —
 # точечно из pkgs.unstable (ARCH-14, прецедент nix-settings.nix). DeepSeek Harness в 26.05
 # нет, в unstable есть (0.2.1-rc.3, с обходом аддона `node-addon-require-builtin`) — берём
 # оттуда; собственной деривации нет (R9.18).

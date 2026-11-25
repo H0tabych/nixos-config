@@ -1,35 +1,44 @@
 # Приватная часть: agents-tools · Владелец: modules/ai/agents-tools.nix (STR-6)
-# Адаптер подписочного агента второго вендора — OpenAI Codex CLI (AI-AGT-9, ADR-047…052).
+# Адаптер подписочного агента второго вендора — OpenAI Codex CLI (AI-AGT-1, AI-AGT-9, ADR-052).
 # Контракт фрагмента `shell` — как у адаптера claude: переменные `state_dir`, `agent_mode`,
-# массивы `extra_env`, `extra_bin_args`, `sandbox_opts`, `publish`; пакет — `bin`.
+# `gw_key`, массивы `extra_env`, `extra_bin_args`, `sandbox_opts`, `publish`; пакет — `bin`.
 #
-# Вход по подписке ChatGPT мимо шлюза (AI-GW-11, как у claude). Ключ шлюза нужен только для
-# инструментов MCP-шлюза (AI-GW-14): `codex-online` из `my.ai.gateway.agents.codex.mcp`.
+# Модель — по подписке ChatGPT мимо шлюза и в родном протоколе агента (AI-GW-11, ADR-051): шлюз
+# посредником не стоит. Ключ шлюза (`codex-online`) нужен только инструментам MCP-шлюза
+# (AI-GW-14): права ему даёт `my.ai.gateway.agents.codex.mcp`.
 #
 # Домашний каталог: CODEX_HOME = ~/.codex, а песочница AI-SBX-2 делает $HOME пустым — поэтому
-# ослабленный режим AI-SBX-12 (`--home-rw`, решение владельца по образцу claude, ADR-48).
-# Точечная альтернатива (цена — каталог создать руками до первого запуска):
-#   `--app-path $HOME/.codex` и `extra_env=(--env "CODEX_HOME=$HOME/.codex")`.
+# ослабленный режим AI-SBX-12 (`--home-rw`, решение владельца по образцу claude). Точечная
+# альтернатива (цена — каталог создать руками до первого запуска): `--app-path $HOME/.codex` и
+# `extra_env=(--env "CODEX_HOME=$HOME/.codex")`.
 #
-# Режимы (AI-AGT-1): политика — не флагами, а `config.toml` кодекса; файлы приложения Nix не
-# пишет (DOT-3), поэтому значения передаются опциями командной строки (`-c key=value`):
+# Политика уровня 0 — опциями запуска `-c ключ=значение` (значение — TOML), а не файлом: файлы
+# приложения Nix не пишет (DOT-3), а `~/.codex/config.toml` ведёт сам Codex.
+# Режимы (AI-AGT-1):
 #   autonomous → approval_policy="on-request", sandbox_mode="danger-full-access"
 #                (границу даёт песочница лаунчера, AI-SBX-8);
 #   controlled → approval_policy="on-request", sandbox_mode="workspace-write".
+#                ПРОВЕРИТЬ: собственная песочница Codex внутри песочницы лаунчера (вложенные
+#                пространства имён); не заработает — `approval_policy="untrusted"` и
+#                `sandbox_mode="read-only"`.
 # `codex exec` всегда использует `approval_policy=never` (по исходнику), поэтому задаём явно.
+# Телеметрия и проверка обновлений выключены (ARCH-14): обновляет только Nix. `DO_NOT_TRACK`
+# Codex не читает (ПРОВЕРЕНО по бинарнику 0.166.0), поэтому — ключи конфигурации.
 #
-# MCP: HTTP-вход шлюза `$AI_GATEWAY_URL/mcp`; ключ — значением в окружении через
-# `bearer_token_env_var = "AI_MCP_KEY"` (тот же ключ `online`, что у claude/dsh), в argv и в
-# файле ключ не появляется (AI-SBX-3). Серверs проекта подключаются только с подтверждением
-# (AI-SBX-9): строгий режим «только этот список» не включаем.
+# MCP (AI-CTX-3): локальные серверы общего списка — строки `generated/codex/local.overrides`
+# из dotfiles (генератор `ai/gen/gen.py`), вход MCP-шлюза — `$AI_GATEWAY_URL/mcp`; ключ уходит
+# заголовком `x-bf-vk` из переменной окружения (`env_http_headers`), в argv и в файле его нет
+# (AI-SBX-3). Серверы проекта подключаются только с подтверждением (AI-SBX-9): строгий режим
+# «только этот список» не включаем.
 #
-# Вход в подписку — интерактивно ОДИН раз: `codex login` (callback на 127.0.0.1:1455, браузер —
-# хоста; лаунчер публикует порт так же, как для `dsh`). Дальше — только через лаунчер.
+# Вход в подписку — интерактивно ОДИН раз: `agent-launcher codex login --device-auth` (код
+# вводится в браузере хоста; обратный вызов на 127.0.0.1:1455, которого вне песочницы не видно,
+# не нужен). Дальше — только через лаунчер.
 { lib, codexCode }:
 {
   name = "codex";
   subscription = true; # по подписке, мимо шлюза (AI-GW-11); в offline не запускается (AI-SBX-5)
-  gatewayKey = true; # ключ `codex-online` — только для MCP-инструментов
+  gatewayKey = true; # ключ `codex-online` — только для MCP-инструментов (AI-GW-14)
 
   shell = ''
     bin=${lib.getExe codexCode}
@@ -37,32 +46,37 @@
     sandbox_opts+=(--home-rw)
     # Окно браузера Playwright на Wayland-сессии и GL хоста (AI-SBX-15, AI-SBX-14).
     sandbox_opts+=(--wayland --device dri)
-    # Телеметрия/аналитика выключены (ARCH-14): обновляет только Nix.
-    export DO_NOT_TRACK=1
-    extra_env=(
-      --env "DO_NOT_TRACK=1"
-      --env "AI_MCP_URL=''${AI_GATEWAY_URL:-}/mcp"
+    project_files=$'.codex/|состояние и настройки Codex в проекте'
+
+    mode_args=(
+      -c 'approval_policy="on-request"'
+      -c 'analytics.enabled=false'
+      -c 'check_for_update_on_startup=false'
     )
-    # Ключ MCP-входа — значением в окружении, не в argv.
+    if [ "$agent_mode" = controlled ]; then
+      mode_args+=(-c 'sandbox_mode="workspace-write"')
+    else
+      mode_args+=(-c 'sandbox_mode="danger-full-access"')
+    fi
+
+    # Локальные серверы общего списка MCP (нет файла — без них).
+    mcp_args=()
+    mcp_file="$HOME/.config/ai/generated/codex/local.overrides"
+    if [ -r "$mcp_file" ]; then
+      while IFS= read -r line; do
+        case "$line" in "" | "#"*) continue ;; esac
+        mcp_args+=(-c "$line")
+      done < "$mcp_file"
+    fi
+    # Вход MCP-шлюза — только когда есть шлюз и ключ (AI-GW-9): ключ значением в окружении.
     if [ -n "''${AI_GATEWAY_URL:-}" ] && [ -n "$gw_key" ]; then
       export AI_MCP_KEY="$gw_key"
       sandbox_opts+=(--pass-env AI_MCP_KEY)
-    fi
-    project_files=$'.codex/|состояние и настройки Codex в проекте'
-    # Настройки режима и MCP — опциями запуска (DOT-3: Nix не пишет config.toml).
-    mode_args=()
-    if [ "$agent_mode" = controlled ]; then
-      mode_args=(-c 'approval_policy="on-request"' -c 'sandbox_mode="workspace-write"')
-    else
-      mode_args=(-c 'approval_policy="on-request"' -c 'sandbox_mode="danger-full-access"')
-    fi
-    mcp_args=()
-    if [ -n "''${AI_MCP_URL:-}" ] && [ -n "''${AI_MCP_KEY:-}" ]; then
-      mcp_args=(
-        -c 'mcp_servers.gateway.url="'"$AI_MCP_URL"'"'
-        -c 'mcp_servers.gateway.bearer_token_env_var="AI_MCP_KEY"'
+      mcp_args+=(
+        -c "mcp_servers.gateway.url=\"$AI_GATEWAY_URL/mcp\""
+        -c 'mcp_servers.gateway.env_http_headers={x-bf-vk="AI_MCP_KEY"}'
       )
     fi
-    extra_bin_args=( "''${mode_args[@]}" "''${mcp_args[@]}" )
+    extra_bin_args=("''${mode_args[@]}" "''${mcp_args[@]}")
   '';
 }
