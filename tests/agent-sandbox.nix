@@ -330,6 +330,22 @@ pkgs.testers.runNixOSTest {
     status, _ = machine.execute(sandbox("true", "--device sda"))
     assert status != 0, "AI-SBX-14: устройство вне белого списка — отказ"
 
+    # === AI-SBX-15: --wayland — только сокет Wayland-сессии, остальное в /run/user скрыто ====
+    WL = "env WAYLAND_DISPLAY=wayland-0"
+    status, _ = machine.execute(sandbox("test -S /run/user/2000/wayland-0", env=WL))
+    assert status != 0, "AI-SBX-15: без --wayland сокета Wayland в песочнице нет"
+    sandbox_out("test -S /run/user/2000/wayland-0", "--wayland", env=WL)
+    assert "alive" in sandbox_out("socat - UNIX-CONNECT:/run/user/2000/wayland-0", "--wayland", env=WL), (
+        "AI-SBX-15: сокет Wayland должен отвечать изнутри"
+    )
+    assert "wayland-0" in sandbox_out("echo $WAYLAND_DISPLAY", "--wayland", env=WL)
+    for hidden in ["fixture-bus", "ssh-agent"]:
+        status, _ = machine.execute(sandbox(f"test -e /run/user/2000/{hidden}", "--wayland", env=WL))
+        assert status != 0, f"AI-SBX-15: --wayland не открывает /run/user/2000/{hidden}"
+    # Сокета нет — опция молча ничего не делает, переменных Wayland нет.
+    out = sandbox_out("echo [$WAYLAND_DISPLAY]", "--wayland", env="env WAYLAND_DISPLAY=absent XDG_RUNTIME_DIR=/nonexistent")
+    assert "[]" in out, "AI-SBX-15: без сокета WAYLAND_DISPLAY не задаётся"
+
     # === AI-SBX-12: --home-rw (роль claude). Урезанный набор AI-A7 ============
     HRW = "--home-rw"
     assert "fake-ssh-key" in sandbox_out("cat /home/agent/.ssh/id_ed25519", HRW), (

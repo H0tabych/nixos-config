@@ -1,6 +1,7 @@
 # Приватная часть: agents-tools · Владелец: modules/ai/agents-tools.nix (STR-6)
 # Фрагмент скрипта agents-sandbox-exec: монтирования $HOME, проекта,
-# каталога состояния, кэша окружения, защиты git, узлов устройств (AI-SBX-2, 7, 12, 14).
+# каталога состояния, кэша окружения, защиты git, узлов устройств, сокета Wayland
+# (AI-SBX-2, 7, 12, 14, 15).
 # Вставляется в тот же скрипт: переменные (`bwrap_args`, `real_home`, `state_dir`,
 # `home_rw`, `no_project`, `config_dirs`, `app_paths` …) — общие с ним.
 # Без проекта (`no_project`, долгоживущая песочница AI-SBX-13) — только домашний каталог,
@@ -13,6 +14,16 @@
   for d in ''${devices[@]+"''${devices[@]}"}; do
     bwrap_args+=(--dev-bind-try "/dev/$d" "/dev/$d")
   done
+
+  # AI-SBX-15: сокет Wayland-сессии (клиент подключается к нему из `/run/user/$uid`) и драйвер GL
+  # хоста (`/run/opengl-driver`, иначе `--tmpfs /run` его скрыл бы и браузер ушёл бы в программный
+  # рендеринг). Остальное в `/run/user/<uid>` хоста (шина, gpg-agent, pipewire) по-прежнему скрыто.
+  if [ -n "$wayland_src" ]; then
+    bwrap_args+=(
+      --bind "$wayland_src" "/run/user/$uid/$wl_name"
+      --ro-bind-try /run/opengl-driver /run/opengl-driver
+    )
+  fi
 
   # База разрешений direnv (AI-SBX-4): ищется в $XDG_DATA_HOME/direnv — кладём ro.
   direnv_data="''${XDG_DATA_HOME:-$real_home/.local/share}/direnv"

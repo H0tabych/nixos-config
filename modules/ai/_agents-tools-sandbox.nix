@@ -19,6 +19,7 @@
 # `online`: есть сокет демона сборки; `offline`: нет.
 # AI-SBX-7 (R9.15): работа на месте; метаданные git и `.envrc` ro, список —
 # `agents-git binds`; `.direnv` у роли свой.
+# AI-SBX-15 (ADR-053): `--wayland` — сокет Wayland-сессии и GL-драйвер хоста (окно браузера агента).
 # AI-SBX-13 (ADR-48): project-dir `-` — без проекта (только с `--home-rw`), долгоживущая
 # песочница, в которую входят окна; `--info-file` — JSON `bwrap --info-fd` (id пространств).
 {
@@ -35,7 +36,7 @@ pkgs.writeShellApplication {
   ];
   text = ''
     usage() {
-      echo "usage: agents-sandbox-exec <project-dir|-> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--cwd PATH] [--home-rw] [--device kvm|dri]... [--info-file PATH] -- <cmd...>" >&2
+      echo "usage: agents-sandbox-exec <project-dir|-> <state-dir> <online|offline> [--env NAME=VALUE]... [--pass-env NAME]... [--config NAME]... [--app-path PATH]... [--cwd PATH] [--home-rw] [--wayland] [--device kvm|dri]... [--info-file PATH] -- <cmd...>" >&2
       echo "       agents-sandbox-exec <project-dir|-> <state-dir> <online|offline> [--env ...] [--pass-env ...] --print-env" >&2
       exit 1
     }
@@ -63,7 +64,7 @@ pkgs.writeShellApplication {
     config_dirs=()
     app_paths=()
     cwd_arg=""
-    home_rw=0 info_file="" print_env=0
+    home_rw=0 wayland=0 info_file="" print_env=0
     while :; do
       case "''${1:-}" in
         --env)
@@ -91,6 +92,10 @@ pkgs.writeShellApplication {
           ;;
         --home-rw)
           home_rw=1
+          shift
+          ;;
+        --wayland)
+          wayland=1
           shift
           ;;
         --device)
@@ -133,6 +138,25 @@ pkgs.writeShellApplication {
       "NIX_REMOTE=daemon"
     )
     [ -n "''${LANG:-}" ] && env_args+=("LANG=$LANG")
+    # AI-SBX-15 (ADR-053): сокет Wayland-сессии пользователя — окно браузера агента. Имя —
+    # `WAYLAND_DISPLAY`, иначе первый сокет `wayland-*`; сокета нет (ВМ, сеанс без Wayland) —
+    # опция молча ничего не делает, браузер агента уходит в режим без окна.
+    wayland_src="" wl_name=""
+    if [ "$wayland" -eq 1 ]; then
+      host_rt=''${XDG_RUNTIME_DIR:-/run/user/$uid}
+      wl_name=''${WAYLAND_DISPLAY:-}
+      if [ -z "$wl_name" ] || [ ! -S "$host_rt/$wl_name" ]; then
+        wl_name=""
+        for c in "$host_rt"/wayland-*; do
+          [ -S "$c" ] && wl_name=''${c##*/} && break
+        done
+      fi
+      case "$wl_name" in */*) wl_name="" ;; esac
+      if [ -n "$wl_name" ] && [ -S "$host_rt/$wl_name" ]; then
+        wayland_src="$host_rt/$wl_name"
+        env_args+=("WAYLAND_DISPLAY=$wl_name" "XDG_SESSION_TYPE=wayland")
+      fi
+    fi
 
     # Прокси-переменные есть только в M1 (NET-10), в M2 их нет; `all_proxy` (SOCKS) не передаём.
     for v in http_proxy HTTP_PROXY https_proxy HTTPS_PROXY no_proxy NO_PROXY; do

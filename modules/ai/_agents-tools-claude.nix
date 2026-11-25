@@ -22,8 +22,10 @@
 
   longLived = {
     # `--device`: /dev/kvm и /dev/dri хоста (AI-SBX-14) — проверки переносимости в ВМ и живой Wayland.
+    # `--wayland`: сокет Wayland-сессии и GL хоста (AI-SBX-15) — окно браузера Playwright.
     sandboxOpts = [
       "--home-rw"
+      "--wayland"
       "--device"
       "kvm"
       "--device"

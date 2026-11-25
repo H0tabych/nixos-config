@@ -55,12 +55,36 @@ _: {
           exec mcp-language-server --workspace "$PWD" --lsp "''${lsp[0]}" -- "''${lsp[@]:1}"
         '';
       };
+
+      # Браузер для агентов (AI-CTX-4/5): stdio в песочнице, браузеры в пакете, без загрузок.
+      # Обёртка с тем же именем `playwright-mcp` (список в dotfiles ссылается на имя из PATH,
+      # DOT-1) чинит три причины, по которым браузер не стартовал в песочнице (R9.28):
+      #  1. `LD_LIBRARY_PATH` — обёртка claude-code кладёт в него alsa-lib из unstable (glibc 2.43),
+      #     chromium собран под glibc 2.42 и падает с `GLIBC_2.43 not found`; дочерним процессам
+      #     эта переменная ни к чему;
+      #  2. профиль по умолчанию лежит в `PLAYWRIGHT_BROWSERS_PATH` (хранилище, только чтение) —
+      #     задаём постоянный профиль в каталоге состояния агента: входы на сайты сохраняются, а
+      #     `.playwright-mcp/` не мусорит в проекте (снимки и скриншоты — в каталог состояния);
+      #  3. окно открывается на Wayland-сессии пользователя (AI-SBX-15: сокет даёт опция
+      #     `--wayland` песочницы); сокета нет (тесты, ВМ, сеанс без Wayland) — без окна.
+      playwrightMcp = pkgs.writeShellApplication {
+        name = "playwright-mcp";
+        text = ''
+          unset LD_LIBRARY_PATH
+          state="''${XDG_STATE_HOME:-$HOME/.local/state}/playwright-mcp"
+          mkdir -p "$state/profile" "$state/output"
+          args=(--user-data-dir "$state/profile" --output-dir "$state/output")
+          sock="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/''${WAYLAND_DISPLAY:-wayland-1}"
+          [ -S "$sock" ] || args+=(--headless)
+          exec ${pkgs.playwright-mcp}/bin/playwright-mcp "''${args[@]}" "$@"
+        '';
+      };
     in
     {
       home.packages = [
         lspServer
         pkgs.ast-grep # L3
-        pkgs.playwright-mcp # браузер для агентов: stdio в песочнице, браузеры в пакете, без загрузок (AI-CTX-4/5)
+        playwrightMcp
       ];
     };
 }

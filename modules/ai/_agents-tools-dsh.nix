@@ -32,6 +32,8 @@
     # Журналы локальных MCP-серверов (code-context-lsp) — в файл, а не в терминал: клиент dsh
     # отдаёт им свой stderr, и шум заглушает ссылку веб-интерфейса.
     extra_env+=(--env "CODE_CONTEXT_LSP_LOG=$state_dir/mcp-lsp.log")
+    # Окно браузера Playwright на Wayland-сессии и GL хоста (AI-SBX-15, AI-SBX-14).
+    sandbox_opts+=(--wayland --device dri)
     if [ "$agent_mode" = controlled ]; then
       extra_env+=(--env "DSH_PERMISSION_MODE=workspace-write")
     else

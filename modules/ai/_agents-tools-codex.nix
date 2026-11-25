@@ -28,13 +28,15 @@
 { lib, codexCode }:
 {
   name = "codex";
-  subscription = true;   # по подписке, мимо шлюза (AI-GW-11); в offline не запускается (AI-SBX-5)
-  gatewayKey = true;     # ключ `codex-online` — только для MCP-инструментов
+  subscription = true; # по подписке, мимо шлюза (AI-GW-11); в offline не запускается (AI-SBX-5)
+  gatewayKey = true; # ключ `codex-online` — только для MCP-инструментов
 
   shell = ''
     bin=${lib.getExe codexCode}
     # AI-SBX-12: CODEX_HOME = $HOME/.codex, песочница не делает $HOME пустым.
     sandbox_opts+=(--home-rw)
+    # Окно браузера Playwright на Wayland-сессии и GL хоста (AI-SBX-15, AI-SBX-14).
+    sandbox_opts+=(--wayland --device dri)
     # Телеметрия/аналитика выключены (ARCH-14): обновляет только Nix.
     export DO_NOT_TRACK=1
     extra_env=(
