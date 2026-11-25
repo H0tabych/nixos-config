@@ -15,7 +15,8 @@
 # хосте без polkit правило не создаётся и переключает только root.
 #
 # Интерфейс для dotfiles (SLOT-3, DOT-5): юнит route-switch@<маршрут>.service, файл
-# состояния и machine.d/tunnel-env с путём к нему и списком юнитов клиента.
+# состояния и machine.d/tunnel-env с путём к нему, списком юнитов клиента, режимом и
+# юнитом kill switch (для диагностического скрипта net/tunnel-check, VPN-OPS-2).
 # Зависимости: tunnel-facts (my.tunnel.route.*) — только чтение (ARCH-3).
 _: {
   flake.modules.nixos.route-switch =
@@ -65,6 +66,10 @@ _: {
           # Сгенерировано Nix (route-switch, NET-13) — не редактируйте руками.
           export TUNNEL_ROUTE_STATE="${cfg.stateFile}"
           export TUNNEL_ROUTE_UNITS="${lib.concatStringsSep " " cfg.restartUnits}"
+          export TUNNEL_MODE="${config.my.tunnel.mode}"
+          export TUNNEL_KILLSWITCH_UNIT="${
+            lib.optionalString (config.my.tunnel.mode == "m2") "nftables.service"
+          }"
         ''}"
       ]) config.my.host.users;
 

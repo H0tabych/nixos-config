@@ -390,6 +390,39 @@ just boot sgms-laptop
 (опрос); при нажатии «Напрямую» из окна сети пароль спрашивает агент polkit (если окно
 не появилось — проверить `systemctl --user status hyprpolkitagent`).
 
+### 9. Диагностика (VPN-OPS-2, VPN-A15, R9.7)
+
+Скрипт `~/.dotfiles/net/tunnel-check` (dotfiles, `net/`) проверяет туннель одной командой.
+Проверки идут параллельно, у каждой потолок 4 с, значит весь прогон — не дольше ~5 с.
+Режим, юниты клиента и юнит kill switch берутся из `~/.config/machine.d/tunnel-env`
+(пишет `route-switch`); без этого файла (хост без туннеля) скрипт молчит.
+
+```sh
+~/.dotfiles/net/tunnel-check            # по строке на проверку: СТАТУС имя подробности
+~/.dotfiles/net/tunnel-check --json     # для индикатора
+time ~/.dotfiles/net/tunnel-check       # VPN-A15: ≤ 5 с
+```
+
+| Проверка | Что значит FAIL |
+|---|---|
+| `service` | юнит клиента не активен (журнал: `journalctl -u <юнит>`) |
+| `listeners` | у клиента есть слушатель не на loopback (VPN-A3); WARN — процессы клиента не видны без прав |
+| `external-ip` | нет ответа через путь наружу (выход недоступен — процедура 8, RES-8) |
+| `local-ip` | ресурс локальной зоны недоступен; SKIP, пока не задан `TUNNEL_CHECK_LOCAL_URL` |
+| `dns` | зарубежное имя не разрешается |
+| `download` | не получено 1 МиБ за 4 с (ограничение подсети, RES-3) |
+| `killswitch` | в M2 юнит `nftables.service` не активен — таблица kill switch не загружена |
+| `route` | `direct` — WARN (защита снята); нет связи в `tunnel` — FAIL |
+| `policy` | WARN: адрес локального ресурса совпал с адресом выхода — политика его не отделяет |
+
+Необязательные переменные (в окружении или `machine.d`): `TUNNEL_CHECK_IP_URL`,
+`TUNNEL_CHECK_LOCAL_URL` (ресурс в зоне локальной юрисдикции — задаёт владелец), `TUNNEL_CHECK_DL_URL`,
+`TUNNEL_CHECK_DNS_NAME`. Код выхода 1 — есть хотя бы один FAIL.
+
+Проверено без сети на подставных командах (`ss`, `curl`, `systemctl`, `getent`): норма; слушатель
+`0.0.0.0` → FAIL; kill switch не активен → FAIL; зависшая сеть → 4,0 с; нет `tunnel-env` → пустой
+вывод. **Замер на машине — за владельцем:** результат `time` (VPN-A15) записать сюда с датой.
+
 ## Upstream для LLM
 
 Конкретизация VPN_SUBSYSTEM.md §4.7 (VPN-LLM-1…6) и роадмапа R3.6/S4.
