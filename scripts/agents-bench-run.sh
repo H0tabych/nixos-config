@@ -70,8 +70,8 @@ fi
 git -C "$repo" tag bench-base
 echo "каталог замера: $out" >&2
 
-# Проверки идут в окружении проекта: префикс из `#!shell`, затем bash -c.
-run_in_env() { (cd "$repo" && $shell_prefix bash -c "$1"); }
+# Проверки идут в окружении проекта: префикс из `#!shell` (с кавычками — через eval), затем bash -c.
+run_in_env() { (cd "$repo" && eval "$shell_prefix bash -c \"\$1\""); }
 
 if [ "$baseline" -eq 1 ] && [ -n "$baseline_cmd" ]; then
   echo "базовая проверка проекта (прогрев окружения) ..." >&2
