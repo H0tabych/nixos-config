@@ -161,11 +161,22 @@
           "suspend-then-hibernate.target"
         ];
         serviceConfig.Type = "oneshot";
+        # Отказ выгрузки модуля не скрывается (R9.24): причина — в журнал, юнит завершается с
+        # ошибкой (виден в `systemctl --failed`), но Ollama всё равно запускается — инференс
+        # остаётся доступен хотя бы на CPU. Модуль не загружен вовсе — не отказ (нет GPU).
         script = ''
-          systemctl stop ollama.service
-          ${pkgs.kmod}/bin/rmmod nvidia_uvm || true
-          ${pkgs.kmod}/bin/modprobe nvidia_uvm
-          systemctl start ollama.service
+          rc=0
+          systemctl stop ollama.service || rc=1
+          if [ -d /sys/module/nvidia_uvm ] && ! ${pkgs.kmod}/bin/rmmod nvidia_uvm; then
+            echo "inference-post-resume: nvidia_uvm не выгрузился (модуль занят?), GPU после resume может быть недоступен" >&2
+            rc=1
+          fi
+          ${pkgs.kmod}/bin/modprobe nvidia_uvm || {
+            echo "inference-post-resume: nvidia_uvm не загрузился" >&2
+            rc=1
+          }
+          systemctl start ollama.service || rc=1
+          exit $rc
         '';
       };
     };

@@ -584,17 +584,21 @@
       wantedBy = [ "suspend.target" "hibernate.target" "hybrid-sleep.target" "suspend-then-hibernate.target" ];
       serviceConfig.Type = "oneshot";
       script = ''
-        systemctl stop ollama.service
-        ${pkgs.kmod}/bin/rmmod nvidia_uvm || true       # вендор-специфика допустима только здесь (AI-INF-3)
-        ${pkgs.kmod}/bin/modprobe nvidia_uvm
-        systemctl start ollama.service
+        rc=0
+        systemctl stop ollama.service || rc=1
+        if [ -d /sys/module/nvidia_uvm ] && ! ${pkgs.kmod}/bin/rmmod nvidia_uvm; then   # вендор-специфика допустима только здесь (AI-INF-3)
+          echo "inference-post-resume: nvidia_uvm не выгрузился" >&2; rc=1               # отказ не скрывается (R9.24)
+        fi
+        ${pkgs.kmod}/bin/modprobe nvidia_uvm || { echo "inference-post-resume: nvidia_uvm не загрузился" >&2; rc=1; }
+        systemctl start ollama.service || rc=1       # Ollama стартует и при отказе: инференс хотя бы на CPU
+        exit $rc                                      # ненулевой код — юнит failed, виден в `systemctl --failed`
       '';                                              # ПРОВЕРИТЬ порядок юнитов и имена целей
     };
   };
 }
 ```
 
-Выгрузка модели на практике — запрос к API с нулевым временем жизни (`keep_alive: 0`) для каждой загруженной модели. Отказ после resume (потеря GPU, откат на CPU) описан в официальной документации Ollama; штатный обход — перезагрузка модуля `nvidia_uvm`, что и делает `inference-post-resume`.
+Выгрузка модели на практике — запрос к API с нулевым временем жизни (`keep_alive: 0`) для каждой загруженной модели. Отказ после resume (потеря GPU, откат на CPU) описан в официальной документации Ollama; штатный обход — перезагрузка модуля `nvidia_uvm`, что и делает `inference-post-resume`. Отказ выгрузки или загрузки модуля не скрывается: причина попадает в журнал, юнит завершается с ошибкой (`failed`), а Ollama всё равно запускается — инференс остаётся доступен на CPU.
 
 ### P.4 Значения машинного слоя (имена переменных — ПРОВЕРИТЬ по каждому приложению)
 

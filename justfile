@@ -83,6 +83,11 @@ hibernate-offset file="":
 bench-prompt config *dirs:
     python3 scripts/bench-prompt.py --config {{ config }} {{ dirs }}
 
+# Сводка по сессиям агентов для замера набора 8.2 (AI_SUBSYSTEM 8.2/8.3, R9.24): время,
+# ходы, инструменты, токены. Только читает журналы сессий; агент — claude или dsh.
+agents-bench agent *args:
+    python3 scripts/agents-bench.py {{ agent }} {{ args }}
+
 # SEC-9: pre-commit сканер секретов. Однократно на клон; devshell этого не делает
 # (AI-SBX-7: shellHook, переписывавший core.hooksPath, обходил защиту метаданных git).
 hooks:
