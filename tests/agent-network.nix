@@ -237,6 +237,7 @@ pkgs.testers.runNixOSTest {
     echo "mcpkey=$(printenv AI_MCP_KEY)"
     echo "mcpurl=$(printenv AI_MCP_URL)"
     echo "lsplog=$(printenv CODE_CONTEXT_LSP_LOG)"
+    echo "hostenv=$(printenv AGENTS_TEST_HOST_LEAK)"
     """
 
 
@@ -251,7 +252,8 @@ pkgs.testers.runNixOSTest {
 
     def launch(args, project):
         """Реальный agent-launcher с заглушкой роли; stderr вместе со stdout."""
-        return machine.execute(outside(f"cd {project} && agent-launcher {args} 2>&1"))
+        # AGENTS_TEST_HOST_LEAK — окружение хоста, которого внутри быть не должно (AI-SBX-3).
+        return machine.execute(outside(f"cd {project} && AGENTS_TEST_HOST_LEAK=leak-marker agent-launcher {args} 2>&1"))
 
 
     def probe_in(role_args, project):
@@ -344,6 +346,8 @@ pkgs.testers.runNixOSTest {
     # R9.23 (AI-GW-14): ключ шлюза у claude — только для инструментов, значением в окружении (AI_MCP_KEY).
     assert r["mcpkey"] == "claude-online-key" and r["mcpurl"] == "http://127.0.0.1:11501/mcp", f"MCP-ключ claude: {out}"
     assert r["lsplog"] == "", f"у claude stderr серверов собирает сам агент: {out}"
+    # Вход в долгоживущую песочницу (`agents-host enter`) очищает окружение хоста (регрессия R9.24: `compgen`).
+    assert r["hostenv"] == "", f"AI-SBX-3: окружение хоста попало в песочницу claude: {out}"
 
     # === Режимы агента (AI-AGT-1, AI-AGT-9): autonomous по умолчанию, `--controlled` ====
     # claude: в autonomous флага режима нет (настройки пользователя), в controlled — manual.

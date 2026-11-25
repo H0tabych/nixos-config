@@ -157,8 +157,11 @@ pkgs.writeShellApplication {
           eval "exec $fd>&-" 2> /dev/null || true
         done
         # Окружение — ровно перечень AI-SBX-3; дальше только абсолютные пути.
-        for v in $(compgen -e); do
-          unset "$v" 2> /dev/null || true
+        # Имена — из `env -0`, а не `compgen -e`: у bash из writeShellApplication нет `compgen`
+        # (без readline), и очистка молча не выполнялась (R9.24: окружение хоста попадало внутрь).
+        mapfile -d "" -t inherited < <(${env} -0)
+        for kv in "''${inherited[@]}"; do
+          unset "''${kv%%=*}" 2> /dev/null || true
         done
         for kv in "''${kvs[@]}"; do
           export "''${kv?}"
